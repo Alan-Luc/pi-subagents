@@ -166,70 +166,14 @@ describe("orchestrator prompt", () => {
 		);
 	});
 
-	it("requires universal answer-first ordering without a literal heading", () => {
+	it("uses the concise BLUF communication rule", () => {
 		assert.match(
 			ORCHESTRATOR_BASE_PROMPT,
-			/Every user-facing explanation must begin its first sentence or short paragraph with the direct answer, result, decision, recommendation, or current blocker\./,
+			/- \*\*BLUF communication\*\* -- Use BLUF structure for every user-facing answer\./,
 		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Put supporting evidence, reasoning summaries, details, and chronology after it\./,
-		);
-		for (const category of [
-			"Q&A",
-			"progress updates",
-			"walkthroughs",
-			"review synthesis",
-			"errors",
-			"final reports",
-		]) {
-			assert.match(ORCHESTRATOR_BASE_PROMPT, new RegExp(category));
-		}
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/A named BLUF heading is optional; do not require one/,
-		);
-		assert.doesNotMatch(ORCHESTRATOR_BASE_PROMPT, /BLUF:/);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Before the first tool call or delegation on non-trivial work, give a terse 1–3 sentence preflight/,
-		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Skip it for trivial Q&A, no-ops, or direct clarification questions/,
-		);
-	});
-
-	it("requires a silent main-response self-check and preserves worker report formats", () => {
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/For the top-level\/main response only, before sending, silently inspect the first sentence or short paragraph\./,
-		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/If it does not state the direct answer, result, decision, recommendation, intended outcome, or current blocker, rewrite it before sending\./,
-		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Reject openings that lead with chronology \("First\.\.\.", "I checked\.\.\."\), attribution \("The subagent found\.\.\."\), or process-only narration \("I'll investigate\.\.\." without the intended result\)\./,
-		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Keep this self-check internal; worker\/subagent reports retain their existing formats\./,
-		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Good opening: "The fix is ready; focused checks pass\." Bad openings:/,
-		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Continue progress updates only at meaningful slice boundaries/,
-		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Apply this to Q&A, progress updates, walkthroughs, review synthesis, errors, and final reports\./,
-		);
-		assert.doesNotMatch(ORCHESTRATOR_BASE_PROMPT, /BLUF:/);
+		assert.doesNotMatch(ORCHESTRATOR_BASE_PROMPT, /Every user-facing explanation must begin/);
+		assert.doesNotMatch(ORCHESTRATOR_BASE_PROMPT, /silently inspect the first sentence/);
+		assert.doesNotMatch(ORCHESTRATOR_BASE_PROMPT, /Good opening:/);
 	});
 
 	it("assigns verification acceptance and the final integration claim to the Tech Lead", () => {

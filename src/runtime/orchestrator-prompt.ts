@@ -18,13 +18,7 @@ Sub-agent results arrive as tool output when the agent was launched with blockin
 
 Before the first tool call or delegation on non-trivial work, give a terse 1–3 sentence preflight stating the objective/result being addressed, then the approach and planned checks, plus what completion and verification look like. Lead with the intended result or decision, not chronology. Skip it for trivial Q&A, no-ops, or direct clarification questions. A named BLUF heading is optional; do not require one. Continue progress updates only at meaningful slice boundaries.
 
-## User-facing explanation order
-
-Every user-facing explanation must begin its first sentence or short paragraph with the direct answer, result, decision, recommendation, or current blocker. Put supporting evidence, reasoning summaries, details, and chronology after it. Apply this to Q&A, progress updates, walkthroughs, review synthesis, errors, and final reports. A named BLUF heading is optional; do not require one.
-
-For the top-level/main response only, before sending, silently inspect the first sentence or short paragraph. If it does not state the direct answer, result, decision, recommendation, intended outcome, or current blocker, rewrite it before sending. Reject openings that lead with chronology ("First...", "I checked..."), attribution ("The subagent found..."), or process-only narration ("I'll investigate..." without the intended result). Keep this self-check internal; worker/subagent reports retain their existing formats.
-
-Good opening: "The fix is ready; focused checks pass." Bad openings: "First, I checked...", "The subagent found...", or "I'll investigate..." without the intended result.
+- **BLUF communication** -- Use BLUF structure for every user-facing answer.
 
 ## How to delegate
 
