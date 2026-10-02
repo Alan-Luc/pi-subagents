@@ -295,11 +295,15 @@ describe("orchestrator runtime persistence", () => {
 		});
 		controller.handleSessionStart(runtime.ctx);
 
-		const result = controller.beforeAgentStart({
+		const event = {
 			systemPromptOptions: { cwd: "/tmp", appendSystemPrompt: "keep this" },
-		});
-		assert.ok(result);
-		assert.match(result.systemPrompt, /keep this$/);
+		};
+		const result = controller.beforeAgentStart(event);
+		assert.equal(result, undefined);
+		assert.match(
+			event.systemPromptOptions.appendSystemPrompt ?? "",
+			/^keep this\n\nYou are an orchestrator/,
+		);
 		assert.equal(controller.handleToolCall({ toolName: "bash" })?.block, true);
 		assert.equal(
 			controller.handleToolCall({ toolName: "subagent" }),

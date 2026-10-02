@@ -123,6 +123,7 @@ function createOverlay(
 	overrides: SnapshotOverrides = {},
 	rows = 18,
 	saveGlobalDefaultError?: string,
+	useVisibleSelectionMarkers = true,
 ) {
 	const { runtime, calls, setSnapshot } = createRuntime(
 		overrides,
@@ -136,7 +137,7 @@ function createOverlay(
 		createContext() as unknown as ExtensionContext,
 		{
 			fg: (_tone, text) => text,
-			bg: (_color, text) => "[" + text + "]",
+			bg: (_color, text) => (useVisibleSelectionMarkers ? "[" + text + "]" : text),
 			bold: (text) => text,
 		},
 		runtime,
@@ -175,12 +176,18 @@ describe("orchestrator overlay", () => {
 				[42, 24],
 				[80, 10],
 				[18, 24],
+				[16, 24],
 			] as const) {
-				const { overlay } = createOverlay({ currentMode }, rows);
+				const { overlay } = createOverlay({ currentMode }, rows, undefined, width !== 18);
 				try {
 					openOrchestrator(overlay);
 					const visible = renderBottomViewport(overlay, width, rows);
-					const tabLabel = width === 18 ? `Orch. ${mode}` : `Orchestrator: ${mode}`;
+					const tabLabel =
+						width === 18
+							? `Tech Lead: ${mode}`
+							: width === 16
+								? "Tech Lead"
+								: `Tech Lead (Orchestrator): ${mode}`;
 					assert.ok(visible.includes(tabLabel), visible);
 				} finally {
 					overlay.dispose();
@@ -189,12 +196,12 @@ describe("orchestrator overlay", () => {
 		}
 	});
 
-	it("adds Orchestrator after the existing tabs and renders the current session state", () => {
+	it("adds Tech Lead (Orchestrator) after the existing tabs and renders the current session state", () => {
 		const { overlay } = createOverlay();
 		try {
 			openOrchestrator(overlay);
 			const text = renderText(overlay);
-			assert.match(text, /Orchestrator/);
+			assert.match(text, /Tech Lead \(Orchestrator\)/);
 			assert.match(text, /Current session: Off/);
 			assert.match(text, /Enable in this session/);
 			assert.match(text, /Start a fresh orchestrator session/);
@@ -335,7 +342,7 @@ describe("orchestrator overlay", () => {
 				lines.every((line) => visibleWidth(line) <= 24),
 				lines.join("\n"),
 			);
-			assert.match(lines.join("\n"), /Orchestrator/);
+			assert.match(lines.join("\n"), /Tech Lead/);
 			assert.match(lines.join("\n"), /Current session/);
 			assert.match(lines.join("\n"), /children|Blocked/);
 			assert.match(lines.join("\n"), /Enter select/);
@@ -428,7 +435,7 @@ describe("orchestrator overlay", () => {
 });
 
 describe("subagents command bridge", () => {
-	it("uses existing command dispatch for Alt+S without starting a model turn", async () => {
+	it("uses existing command dispatch for Ctrl+Alt+S without starting a model turn", async () => {
 		const { runtime } = createRuntime();
 		let shortcut: ((ctx: unknown) => Promise<void>) | undefined;
 		const sent: Array<{ message: string; options: unknown }> = [];
@@ -455,7 +462,7 @@ describe("subagents command bridge", () => {
 		]);
 	});
 
-	it("keeps command open idempotent while Alt+S explicitly toggles", async () => {
+	it("keeps command open idempotent while Ctrl+Alt+S explicitly toggles", async () => {
 		const { runtime } = createRuntime();
 		let command: ((args: string, ctx: unknown) => Promise<void>) | undefined;
 		let shutdown: (() => Promise<void>) | undefined;

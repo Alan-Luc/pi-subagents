@@ -83,8 +83,9 @@ export function getPiInvocationForTest(args: string[]) {
 export function getSubagentChildProcessEnvForTest(
 	invocation: { command: string; args: string[] },
 	envVars: Record<string, string>,
+	denyPatterns: string[] = [],
 ) {
-	return getSubagentChildProcessEnv(invocation, envVars);
+	return getSubagentChildProcessEnv(invocation, envVars, denyPatterns);
 }
 
 export function getCompletedSubagentResultForTest(id: string) {

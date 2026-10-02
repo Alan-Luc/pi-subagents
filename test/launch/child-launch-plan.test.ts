@@ -61,6 +61,23 @@ describe("child launch plan", () => {
 		assert.deepEqual(plan.capability.skillLaunchPlan.launchArgs, ["--no-skills"]);
 	});
 
+	it("inherits the parent cwd when no child cwd is configured", async () => {
+		const cwd = createTestDir();
+		const plan = await buildChildLaunchPlan({
+			params: {
+				name: "cwd-check",
+				task: "report the cwd",
+				agent: "cwd-check",
+				title: "Cwd check",
+			},
+			agentDefs: null,
+			parentCwd: cwd,
+			parentSessionDir: join(cwd, "parent-sessions"),
+		});
+
+		assert.equal(plan.runtimePaths.targetCwdForSession, cwd);
+	});
+
 	it("reuses an unfiltered configured npm package from the child Pi root", async () => {
 		const cwd = createTestDir();
 		const agentDir = join(cwd, "agent-root");

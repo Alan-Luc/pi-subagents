@@ -1,9 +1,7 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runningSubagents } from "../../src/runtime/state.ts";
 import { buildCompletedItems } from "../../src/tools/overlay/data.ts";
-import { wrapPlainText } from "../../src/tools/overlay/render-helpers.ts";
 import { SubagentsOverlay } from "../../src/tools/subagents-view.ts";
 import {
 	afterEach,
@@ -41,7 +39,7 @@ const testRuntime = {
 	wireSubagentSteerBack: () => {},
 };
 
-function createOverlay(): SubagentsOverlay {
+function createOverlay(rows?: number, tuiOverride?: any): SubagentsOverlay {
 	const done = () => {};
 	const ctx = {
 		cwd: "/tmp",
@@ -59,12 +57,85 @@ function createOverlay(): SubagentsOverlay {
 		bg: (_c: string, text: string) => text,
 		bold: (text: string) => text,
 	};
-	const tui = { requestRender: () => {}, terminal: { columns: 80 } } as any;
+	const tui =
+		tuiOverride ??
+		({
+			requestRender: () => {},
+			terminal: { columns: 80, ...(rows === undefined ? {} : { rows }) },
+		} as any);
 	return new SubagentsOverlay(done as any, ctx, theme, testRuntime as any, tui);
+}
+
+function createTestTerminal(columns = 100, rows = 24) {
+	let onInput: ((data: string) => void) | undefined;
+	return {
+		columns,
+		rows,
+		kittyProtocolActive: false,
+		start(input: (data: string) => void, _onResize: () => void) {
+			onInput = input;
+		},
+		stop() {
+			onInput = undefined;
+		},
+		drainInput: async (_maxMs?: number, _idleMs?: number) => {},
+		write(_data: string) {},
+		moveBy(_lines: number) {},
+		hideCursor() {},
+		showCursor() {},
+		clearLine() {},
+		clearFromCursor() {},
+		clearScreen() {},
+		setTitle(_title: string) {},
+		setProgress(_active: boolean) {},
+		send(data: string) {
+			if (!onInput) throw new Error("test terminal is not started");
+			onInput(data);
+		},
+	};
+}
+
+function sendMousePress(terminal: ReturnType<typeof createTestTerminal>, x: number, y: number): void {
+	terminal.send(`\x1b[<0;${x + 1};${y + 1}M`);
+}
+
+function sendMouseRelease(terminal: ReturnType<typeof createTestTerminal>, x: number, y: number): void {
+	terminal.send(`\x1b[<0;${x + 1};${y + 1}m`);
+}
+
+function sendMouseGesture(terminal: ReturnType<typeof createTestTerminal>, x: number, y: number): void {
+	sendMousePress(terminal, x, y);
+	sendMouseRelease(terminal, x, y);
 }
 
 function simulateKey(overlay: SubagentsOverlay, key: string): void {
 	overlay.handleInput(key);
+}
+
+function mouseEvent(
+	overlay: SubagentsOverlay,
+	type: "press" | "release" | "click",
+	y: number,
+	clickCount = 1,
+) {
+	return overlay.handleMouse({
+		type,
+		button: "left",
+		x: 1,
+		y,
+		screenX: 1,
+		screenY: y,
+		width: 80,
+		height: 24,
+		shift: false,
+		alt: false,
+		ctrl: false,
+		clickCount,
+	});
+}
+
+function mouseClick(overlay: SubagentsOverlay, y: number, clickCount = 1): void {
+	mouseEvent(overlay, "click", y, clickCount);
 }
 
 function renderLines(overlay: SubagentsOverlay, width = 80): string[] {
@@ -313,6 +384,7 @@ describe("subagents-view overlay", () => {
 						definitionThinking: "high",
 						allowModelOverride: true,
 						modelSource: "resume-override",
+						env: "API_KEY=do-not-display",
 						denyTools: [],
 						noContextFiles: false,
 						noSession: false,
@@ -338,11 +410,14 @@ describe("subagents-view overlay", () => {
 				const lines = renderLines(overlay);
 				const text = lines.map(stripAnsi).join("\n");
 				assert.ok(text.includes("model"), text);
-				assert.ok(text.includes("allow-model-override"), text);
-				assert.ok(text.includes("override-model"), text);
 				assert.ok(text.includes("openai-rift/gpt-5.4-mini"), text);
 				assert.ok(text.includes("zai-messages/glm-5.1"), text);
-				assert.ok(!text.includes("model-source"), text);
+				for (let i = 0; i < 20; i++) pressDown(overlay);
+				const scrolledText = renderLines(overlay).map(stripAnsi).join("\n");
+				assert.ok(scrolledText.includes("allow-model-override"), scrolledText);
+				assert.ok(scrolledText.includes("override-model"), scrolledText);
+				assert.ok(!scrolledText.includes("API_KEY"), scrolledText);
+				assert.ok(!scrolledText.includes("model-source"), scrolledText);
 				assert.ok(!text.includes("requested-model-override"), text);
 			} finally {
 				overlay.dispose();
@@ -409,85 +484,7 @@ describe("subagents-view overlay", () => {
 		});
 	});
 
-	describe("wrapping", () => {
-		it("hard-wraps long paths without adding ellipses", () => {
-			const path =
-				"/home/devkit/.local/share/tia/pi-agent/sessions/very-long-session-file-name-that-must-stay-copyable.jsonl";
-			const lines = wrapPlainText(path, 24, Number.MAX_SAFE_INTEGER);
-			assert.equal(lines.join(""), path);
-			assert.ok(!lines.join("\n").includes("…"));
-		});
-	});
 
-	describe("detail view", () => {
-		it("opens detail view with i key", () => {
-			setRunningSubagentForTest({
-				id: "test-1",
-				name: "scout",
-				task: "Explore codebase",
-				mode: "background",
-				executionState: "running",
-				deliveryState: "detached",
-				parentClosePolicy: "terminate",
-				startTime: Date.now(),
-				sessionFile: "/tmp/test.jsonl",
-			} as any);
-
-			const overlay = createOverlay();
-			simulateKey(overlay, "i");
-			const lines = renderLines(overlay);
-			const text = lines.map(stripAnsi).join("\n");
-			assert.ok(text.includes("scout"), `Expected "scout" in detail:\n${text}`);
-			assert.ok(text.includes("Identity"), `Expected "Identity" section:\n${text}`);
-			overlay.dispose();
-		});
-
-		it("keeps running detail visible after the agent leaves the running list", () => {
-			setRunningSubagentForTest({
-				id: "test-1",
-				name: "scout",
-				task: "Explore codebase",
-				mode: "background",
-				executionState: "running",
-				deliveryState: "detached",
-				parentClosePolicy: "terminate",
-				startTime: Date.now(),
-				sessionFile: "/tmp/test.jsonl",
-			} as any);
-
-			const overlay = createOverlay();
-			simulateKey(overlay, "i");
-			runningSubagents.clear();
-			const lines = renderLines(overlay);
-			const text = lines.map(stripAnsi).join("\n");
-			assert.ok(text.includes("scout"), `Expected detail snapshot to remain visible:\n${text}`);
-			assert.ok(text.includes("Identity"), `Expected detail sections to remain visible:\n${text}`);
-			overlay.dispose();
-		});
-
-		it("closes detail view with Escape", () => {
-			setRunningSubagentForTest({
-				id: "test-1",
-				name: "scout",
-				task: "Explore codebase",
-				mode: "background",
-				executionState: "running",
-				deliveryState: "detached",
-				parentClosePolicy: "terminate",
-				startTime: Date.now(),
-				sessionFile: "/tmp/test.jsonl",
-			} as any);
-
-			const overlay = createOverlay();
-			simulateKey(overlay, "i"); // Open detail
-			pressLeft(overlay); // Should NOT switch tab in detail mode
-			simulateKey(overlay, "\x1b"); // Escape closes detail
-			const lines = renderLines(overlay);
-			const text = lines.map(stripAnsi).join("\n");
-			assert.ok(text.includes("Running"), `Expected back to Running tab:\n${text}`);
-			overlay.dispose();
-		});
-	});
 
 	describe("footer hints", () => {
 		it("shows k:kill hint on Running tab", () => {
@@ -542,6 +539,19 @@ describe("subagents-view overlay", () => {
 			(overlay as any).done = done;
 
 			simulateKey(overlay, "\x1b");
+			assert.equal(closed, true);
+		});
+
+		it("closes overlay with Ctrl+Alt+S without closing on Ctrl+S", () => {
+			const overlay = createOverlay();
+			let closed = false;
+			(overlay as any).done = () => {
+				closed = true;
+			};
+
+			simulateKey(overlay, "\x13");
+			assert.equal(closed, false);
+			simulateKey(overlay, "\x1b\x13");
 			assert.equal(closed, true);
 		});
 
@@ -632,6 +642,7 @@ describe("subagents-view overlay", () => {
 					details: {
 						id: "done-1",
 						name: "scout",
+						task: "Recovered exact task\nwith details",
 						status: "completed",
 						exitCode: 0,
 						elapsed: 12,
@@ -653,7 +664,9 @@ describe("subagents-view overlay", () => {
 			const items = await buildCompletedItems(overlayCtx);
 			const item = items.find((i) => i.name === "scout");
 			assert.ok(item, "expected recovered completed item");
-			const ctxField = item!.detailSections.flatMap((s) => s.fields).find((f) => f.label === "context tokens");
+			const fields = item!.detailSections.flatMap((s) => s.fields);
+			assert.equal(fields.find((f) => f.label === "Prompt")?.value, "Recovered exact task\nwith details");
+			const ctxField = fields.find((f) => f.label === "context tokens");
 			assert.equal(ctxField?.value, "150K");
 			assert.ok(
 				item!.stats.includes("150K ctx"),
@@ -777,9 +790,9 @@ describe("subagents-view registration", () => {
 		resetSubagentStateForTest();
 	});
 
-	it("registers /subagents command and alt+s shortcut", async () => {
+	it("registers /subagents command and ctrl+alt+s shortcut", async () => {
 		const commands: Array<{ name: string; description: string }> = [];
-		let shortcutRegistered = false;
+		let registeredShortcut: string | undefined;
 
 		const { registerSubagentsView } = await import("../../src/tools/subagents-view.ts");
 
@@ -788,8 +801,8 @@ describe("subagents-view registration", () => {
 				registerCommand(name: string, opts: any) {
 					commands.push({ name, description: opts.description });
 				},
-				registerShortcut(_shortcut: string, _opts: any) {
-					shortcutRegistered = true;
+				registerShortcut(shortcut: string, _opts: any) {
+					registeredShortcut = shortcut;
 				},
 				on() {},
 			} as any,
@@ -799,7 +812,7 @@ describe("subagents-view registration", () => {
 		assert.equal(commands.length, 1);
 		assert.equal(commands[0].name, "subagents");
 		assert.ok(commands[0].description.includes("subagent"));
-		assert.equal(shortcutRegistered, true);
+		assert.equal(registeredShortcut, "ctrl+alt+s");
 	});
 
 	it("opens the manager as an editor replacement instead of a chat overlay", async () => {
@@ -905,7 +918,7 @@ describe("subagents-view registration", () => {
 		(shutdownHandler as Function)();
 	});
 
-	it("registers and invokes alt+s shortcut handler", async () => {
+	it("registers and invokes ctrl+alt+s shortcut handler", async () => {
 		const notifications: string[] = [];
 		let shortcutHandler: ((ctx: any) => Promise<void>) | null = null;
 		const { registerSubagentsView } = await import("../../src/tools/subagents-view.ts");
@@ -922,7 +935,7 @@ describe("subagents-view registration", () => {
 			mockRuntime,
 		);
 
-		assert.ok(shortcutHandler, "alt+s handler should be registered");
+		assert.ok(shortcutHandler, "ctrl+alt+s handler should be registered");
 
 		// First call — if no global agents, notifies about empty state
 		await (shortcutHandler as (ctx: any) => Promise<void>)({

@@ -29,6 +29,7 @@ import {
 	USER_MSG,
 	writeFileSync,
 } from "../support/index.ts";
+import { readCompleteSessionEntries } from "../../src/session/session.ts";
 
 describe("session.ts", () => {
 	let dir: string;
@@ -47,6 +48,21 @@ describe("session.ts", () => {
 			writeFileSync(file, '{"type":"session","id":"ok"}\nnot-json\n');
 
 			assert.throws(() => getEntries(file), /Invalid session JSONL at .*invalid-session\.jsonl:2:/);
+		});
+	});
+
+	describe("readCompleteSessionEntries", () => {
+		it("reads only complete valid records without mutating the file", () => {
+			const file = join(dir, "live-session.jsonl");
+			const content = '{"type":"session","id":"one"}\nnot-json\n{"type":"message","id":"two"}\n{"type":"message"}';
+			writeFileSync(file, content);
+
+			assert.deepEqual(readCompleteSessionEntries(file), {
+				entries: [{ type: "session", id: "one" }, { type: "message", id: "two" }],
+				malformedLines: 1,
+				incompleteTrailingLine: true,
+			});
+			assert.equal(readFileSync(file, "utf8"), content);
 		});
 	});
 

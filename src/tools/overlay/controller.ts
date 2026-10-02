@@ -1,5 +1,13 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { type Component, Editor, type EditorTheme, Key, matchesKey } from "@earendil-works/pi-tui";
+import {
+	type Component,
+	Editor,
+	type EditorTheme,
+	Key,
+	matchesKey,
+	type TuiMouseEvent,
+	type TuiMouseEventResult,
+} from "@earendil-works/pi-tui";
 import type { OrchestratorController } from "../../runtime/orchestrator-controller.ts";
 import { type ResumeServiceRuntime, resumeSubagentSession } from "../../runtime/resume-service.ts";
 import { completedSubagentResults } from "../../runtime/state.ts";
@@ -14,9 +22,14 @@ import {
 	renderOrchestratorConfirmation,
 } from "./orchestrator-view.ts";
 import { getMaxScroll, renderDetail } from "./render-detail.ts";
+import { handleSessionInput, openSessionView, refreshSessionView } from "./session-controller.ts";
+import { renderSession } from "./session-view.ts";
 import { getFooterHints, renderFooter, renderHeader } from "./render-frame.ts";
 import { fitLine } from "./render-helpers.ts";
-import { getItemRowCount, renderList } from "./render-list.ts";
+import { handleListMouse } from "./mouse-controller.ts";
+import { replaceOverlayItems } from "./item-refresh.ts";
+import { keepListSelectionVisible } from "./list-controller.ts";
+import { renderList } from "./render-list.ts";
 import type { OverlayContext, OverlayItem, OverlayState, OverlayTui, Theme } from "./render-types.ts";
 import { TABS } from "./render-types.ts";
 
@@ -93,14 +106,20 @@ export class SubagentsOverlayController implements Component {
 		this.done(result);
 	}
 
+	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+		if (this.finished) return undefined;
+		return handleListMouse(this.state, event, this.visibleTabs(), this.theme, this.bodyHeight(event.width), () => this.keepSelectionVisible());
+	}
+
 	handleInput(data: string): void {
 		if (this.finished) return;
-		if (matchesKey(data, Key.alt("s"))) {
+		if (matchesKey(data, Key.ctrlAlt("s"))) {
 			this.close();
 			return;
 		}
 
 		if (this.state.view.kind === "detail") this.handleDetailInput(data);
+		else if (this.state.view.kind === "session") this.handleSessionInput(data);
 		else if (this.state.view.kind === "confirm") this.handleConfirmInput(data);
 		else if (this.state.view.kind === "orchestrator-confirm") this.handleOrchestratorConfirmInput(data);
 		else if (this.state.view.kind === "editor") this.handleEditorInput(data);
@@ -115,7 +134,7 @@ export class SubagentsOverlayController implements Component {
 		const bodyHeight = this.bodyHeight(width);
 		if (this.state.activeTab === "orchestrator") {
 			const snapshot = this.getOrchestratorSnapshot();
-			const orchestratorHeight = this.orchestratorBodyHeight(width);
+			const orchestratorHeight = this.bodyHeight(width);
 			if (snapshot && this.state.view.kind === "orchestrator-confirm") {
 				lines.push(
 					...renderOrchestratorConfirmation(this.state.view.targetMode, this.state.view.confirmed, this.theme, width, orchestratorHeight),
@@ -143,6 +162,17 @@ export class SubagentsOverlayController implements Component {
 			}
 		} else if (this.state.view.kind === "detail") {
 			lines.push(...renderDetail(this.state.view.item, this.state.view.scroll, this.theme, width, bodyHeight));
+		} else if (this.state.view.kind === "session") {
+			lines.push(
+				...renderSession(
+					this.state.view.item,
+					this.state.view.transcript,
+					this.state.view.scroll,
+					this.theme,
+					width,
+					bodyHeight,
+				),
+			);
 		} else if (this.state.view.kind === "confirm") {
 			lines.push(...this.renderConfirmView(this.state.view.item, this.state.view.confirmed, width));
 		} else if (this.state.view.kind === "orchestrator-confirm") {
@@ -183,7 +213,7 @@ export class SubagentsOverlayController implements Component {
 			return;
 		}
 
-		const item = this.selectedItem();
+		const item = this.state.items[this.state.selectedIndex];
 		if (!item) return;
 		if (matchesKey(data, Key.enter) || matchesKey(data, "i")) {
 			this.state.view = { kind: "detail", item, scroll: 0 };
@@ -277,6 +307,10 @@ export class SubagentsOverlayController implements Component {
 			return;
 		}
 		const item = this.state.view.item;
+		if (matchesKey(data, "v")) {
+			this.openSessionView(item);
+			return;
+		}
 		const maxScroll = getMaxScroll(item, this.tui.terminal?.columns ?? 80, this.bodyHeight(this.tui.terminal?.columns ?? 80));
 		if ((matchesKey(data, Key.down) || matchesKey(data, "j")) && this.state.view.scroll < maxScroll) {
 			this.state.view = {
@@ -290,6 +324,17 @@ export class SubagentsOverlayController implements Component {
 				scroll: this.state.view.scroll - 1,
 			};
 		}
+	}
+
+	private handleSessionInput(data: string): void {
+		if (this.state.view.kind !== "session") return;
+		const width = this.tui.terminal?.columns ?? 80;
+		this.state.view = handleSessionInput(data, this.state.view, this.theme, width, this.bodyHeight(width));
+	}
+
+	private openSessionView(item: OverlayItem): void {
+		const width = this.tui.terminal?.columns ?? 80;
+		this.state.view = openSessionView(item, this.theme, width, this.bodyHeight(width));
 	}
 
 	private handleConfirmInput(data: string): void {
@@ -336,7 +381,7 @@ export class SubagentsOverlayController implements Component {
 			this.state.orchestrator.selectedIndex,
 			this.state.orchestrator.scroll,
 			this.tui.terminal?.columns ?? 80,
-			this.orchestratorBodyHeight(this.tui.terminal?.columns ?? 80),
+			this.bodyHeight(this.tui.terminal?.columns ?? 80),
 			this.state.orchestrator.error,
 		);
 	}
@@ -369,7 +414,7 @@ export class SubagentsOverlayController implements Component {
 			this.state.orchestrator.selectedIndex,
 			this.state.orchestrator.scroll,
 			this.tui.terminal?.columns ?? 80,
-			this.orchestratorBodyHeight(this.tui.terminal?.columns ?? 80),
+			this.bodyHeight(this.tui.terminal?.columns ?? 80),
 			this.state.orchestrator.error,
 		);
 	}
@@ -423,7 +468,7 @@ export class SubagentsOverlayController implements Component {
 		if (!snapshot || snapshot.isChildSession) return tabs;
 		return tabs.map((tab) =>
 			tab.id === "orchestrator"
-				? { ...tab, label: `Orchestrator: ${snapshot.currentMode ? "On" : "Off"}` }
+				? { ...tab, label: `Tech Lead (Orchestrator): ${snapshot.currentMode ? "On" : "Off"}` }
 				: tab,
 		);
 	}
@@ -446,15 +491,13 @@ export class SubagentsOverlayController implements Component {
 		};
 
 		if (this.state.activeTab === "running") {
-			this.state.items = buildRunningItems(overlayCtx);
+			this.replaceItems(buildRunningItems(overlayCtx));
 			this.state.loading = false;
-			this.clampSelection();
 			return;
 		}
 		if (this.state.activeTab === "agents") {
-			this.state.items = buildAgentItems(overlayCtx);
+			this.replaceItems(buildAgentItems(overlayCtx));
 			this.state.loading = false;
-			this.clampSelection();
 			return;
 		}
 
@@ -462,37 +505,21 @@ export class SubagentsOverlayController implements Component {
 		this.state.loading = this.state.items.length === 0;
 		void buildCompletedItems(overlayCtx).then((items) => {
 			if (loadId !== this.completedLoadId || this.state.activeTab !== "completed") return;
-			this.state.items = items;
+			this.replaceItems(items);
 			this.state.loading = false;
-			this.clampSelection();
 			this.requestRender();
 		});
 	}
 
-	private clampSelection(): void {
-		this.state.selectedIndex = Math.max(0, Math.min(this.state.selectedIndex, this.state.items.length - 1));
-		this.keepSelectionVisible();
+	private replaceItems(items: OverlayItem[]): void {
+		const width = this.tui.terminal?.columns ?? 80;
+		replaceOverlayItems(this.state, items, (view, item) => refreshSessionView(view, item, this.theme, width, this.bodyHeight(width)), () =>
+			this.keepSelectionVisible(),
+		);
 	}
 
 	private keepSelectionVisible(): void {
-		const height = this.bodyHeight();
-		const width = this.tui.terminal?.columns ?? 80;
-		let start = 0;
-		for (let i = 0; i < this.state.selectedIndex; i++) {
-			start += getItemRowCount(this.state.items[i], this.state.activeTab, width);
-		}
-		const selectedHeight = this.state.items[this.state.selectedIndex]
-			? getItemRowCount(this.state.items[this.state.selectedIndex], this.state.activeTab, width)
-			: 1;
-		const end = start + selectedHeight;
-		const current = this.state.listScroll[this.state.activeTab] ?? 0;
-		let next = current;
-		if (start < current) next = start;
-		else if (end > current + height) next = Math.max(0, end - height);
-		this.state.listScroll = {
-			...this.state.listScroll,
-			[this.state.activeTab]: next,
-		};
+		keepListSelectionVisible(this.state, this.tui.terminal?.columns ?? 80, this.bodyHeight());
 	}
 
 	private bodyHeight(width = this.tui.terminal?.columns ?? 80): number {
@@ -500,17 +527,6 @@ export class SubagentsOverlayController implements Component {
 		if (!rows) return FALLBACK_BODY_HEIGHT;
 		const footerHeight = renderFooter(getFooterHints(this.state), this.theme, width).length;
 		return Math.max(1, Math.min(FALLBACK_BODY_HEIGHT, rows - 5 - footerHeight));
-	}
-
-	private orchestratorBodyHeight(width = this.tui.terminal?.columns ?? 80): number {
-		const rows = this.tui.terminal?.rows;
-		if (!rows) return FALLBACK_BODY_HEIGHT;
-		const footerHeight = renderFooter(getFooterHints(this.state), this.theme, width).length;
-		return Math.max(1, Math.min(FALLBACK_BODY_HEIGHT, rows - 5 - footerHeight));
-	}
-
-	private selectedItem(): OverlayItem | undefined {
-		return this.state.items[this.state.selectedIndex];
 	}
 
 	private submitResume(rawText: string): void {

@@ -452,10 +452,10 @@ export class SubagentWidgetManager {
 
 			if (hiddenCount > 0) {
 				const noun = hiddenCount === 1 ? "subagent" : "subagents";
-				lines.push(theme.fg("muted", `... (+${hiddenCount} more ${noun} — Alt+S to show all)`));
+				lines.push(theme.fg("muted", `... (+${hiddenCount} more ${noun} — Ctrl+Alt+S to show all)`));
 			} else if (candidatesTruncated) {
 				// One hint for the whole widget, never per group.
-				lines.push(theme.fg("muted", "... — Alt+S to show all"));
+				lines.push(theme.fg("muted", "... — Ctrl+Alt+S to show all"));
 			}
 		}
 
@@ -465,7 +465,7 @@ export class SubagentWidgetManager {
 	/**
 	 * One row per candidate under a single logical child. The group keeps the
 	 * widget budget: its rows share the lines the other visible agents leave,
-	 * and overflow folds into the same Alt+S hint the agent list uses.
+	 * and overflow folds into the same Ctrl+Alt+S hint the agent list uses.
 	 */
 	private renderVerifiedGroup(
 		theme: WidgetThemeLike,

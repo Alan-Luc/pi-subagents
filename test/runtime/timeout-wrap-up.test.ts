@@ -1,5 +1,4 @@
 import { mkdirSync, readdirSync } from "node:fs";
-import { once } from "node:events";
 import { restartSubagentForTimeoutWrapUp } from "../../src/runtime/timeout-wrap-up.ts";
 import type { PersistedSubagentLaunchMetadata } from "../../src/session/session-files.ts";
 import type { RunningSubagent } from "../../src/types.ts";
@@ -110,7 +109,6 @@ cat > "${stdinFile}"
 
 		await restartSubagentForTimeoutWrapUp(running, { getShellReadyDelayMs: () => 0 });
 		assert.ok(running.childProcess);
-		await once(running.childProcess!, "exit");
 
 		assert.equal(
 			await readNonEmptyFileEventually(envFile),

@@ -392,6 +392,18 @@ describe("ambient agents and runtime paths", () => {
 			] as any[]),
 			null,
 		);
+
+		assert.equal(
+			getTerminalAssistantSummaryForTest([
+				{
+					type: "message",
+					message: { role: "assistant", stopReason: "stop", content: [{ type: "text", text: "hello" }] },
+				},
+				{ type: "custom_message", customType: "correction", content: "Reply again.", display: true },
+			] as any[]),
+			null,
+			"a pending correction is not a terminal summary",
+		);
 	});
 
 	it("only reaps stable terminal summaries for auto-exit background agents", () => {

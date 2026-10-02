@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getPackagedCriteriaDir } from "../../src/vf/criteria.ts";
 import { newRunId } from "../../src/vf/supervisor/run-client.ts";
@@ -116,10 +116,11 @@ export function buildSupervisedRun(
 	} = {},
 ): { runDir: string; runId: string } {
 	const baseDir = options.baseDir ?? createTestDir();
+	const repoRoot = realpathSync(repo);
 	const runId = newRunId();
 	const sessionDir = join(baseDir, "sessions");
 	mkdirSync(sessionDir, { recursive: true });
-	const baseCommit = options.baseCommit ?? preflightWorktreeSource(repo).baseCommit;
+	const baseCommit = options.baseCommit ?? preflightWorktreeSource(repoRoot).baseCommit;
 	const request = {
 		kind: "verified-fanout" as const,
 		name: "vf-test",
@@ -135,7 +136,7 @@ export function buildSupervisedRun(
 		candidates: candidates.map((candidate, i) => ({
 			index: i + 1,
 			sessionFile: join(sessionDir, `w${i + 1}.jsonl`),
-			worktree: join(dirname(repo), candidateWorktreeDirName(repo, runId, i + 1)),
+			worktree: join(dirname(repoRoot), candidateWorktreeDirName(repoRoot, runId, i + 1)),
 			internalBranch: candidateWorktreeBranchName(runId, i + 1),
 			args: [fakePi],
 			env: {

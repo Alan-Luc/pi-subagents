@@ -237,6 +237,7 @@ export interface SessionEntryLike {
 
 export interface SubagentResultMessageDetails {
 	name?: string;
+	task?: string;
 	agent?: string;
 	exitCode?: number;
 	elapsed?: number;

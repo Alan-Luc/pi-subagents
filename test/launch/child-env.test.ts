@@ -1,6 +1,7 @@
 import { assert, describe, it } from "../support/index.ts";
 import {
 	envNameMatchesPattern,
+	buildParentEnvSnapshot,
 	filterDeniedEnv,
 	parseDenyEnvList,
 	pickPaneIdentityEnv,
@@ -84,6 +85,13 @@ describe("child env policy", () => {
 			const env = { A: "1", B: "2" };
 			filterDeniedEnv(env, ["A"]);
 			assert.deepEqual(env, { A: "1", B: "2" });
+		});
+
+		it("strips obsolete PI_TASKS from the default parent snapshot", () => {
+			assert.deepEqual(
+				buildParentEnvSnapshot({ PI_TASKS: "/tmp/stale-tasks.json", KEEP_ME: "1" }),
+				{ KEEP_ME: "1" },
+			);
 		});
 	});
 

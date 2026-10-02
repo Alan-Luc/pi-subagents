@@ -23,8 +23,7 @@ function settleWithin<T>(promise: Promise<T>, ms: number, label: string): Promis
 	return Promise.race([
 		promise,
 		new Promise<never>((_resolve, reject) => {
-			const timer = setTimeout(() => reject(new Error(`watcher did not settle within ${ms}ms: ${label}`)), ms);
-			timer.unref?.();
+			setTimeout(() => reject(new Error(`watcher did not settle within ${ms}ms: ${label}`)), ms);
 		}),
 	]);
 }

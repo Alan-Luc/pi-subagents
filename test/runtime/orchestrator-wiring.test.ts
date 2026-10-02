@@ -112,19 +112,24 @@ describe("orchestrator extension wiring", () => {
 			"subagent_resume",
 		]);
 
-		const start = harness.handlers.get("before_agent_start")?.(
-			{
-				type: "before_agent_start",
-				prompt: "delegate",
-				systemPrompt: "base",
-				systemPromptOptions: {
-					cwd: harness.context.cwd,
-					appendSystemPrompt: "preserve this",
-				},
+		const startEvent = {
+			type: "before_agent_start",
+			prompt: "delegate",
+			systemPrompt: "base",
+			systemPromptOptions: {
+				cwd: harness.context.cwd,
+				appendSystemPrompt: "preserve this",
 			},
+		};
+		const start = harness.handlers.get("before_agent_start")?.(
+			startEvent,
 			harness.context,
 		) as { systemPrompt?: string } | undefined;
-		assert.match(start?.systemPrompt ?? "", /preserve this$/);
+		assert.equal(start?.systemPrompt, undefined);
+		assert.match(
+			startEvent.systemPromptOptions.appendSystemPrompt ?? "",
+			/^preserve this\n\nYou are an orchestrator/,
+		);
 
 		const blocked = harness.handlers.get("tool_call")?.(
 			{ toolName: "bash" },

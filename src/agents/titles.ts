@@ -92,6 +92,8 @@ export function buildSubagentSessionTitle(params: SubagentTitleParams): string |
 export function getTerminalAssistantSummary(entries: SessionEntryLike[]): string | null {
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
+		// A custom message after the reply (e.g. an extension's correction) means another model turn is coming.
+		if (entry.type === "custom_message") return null;
 		if (entry.type !== "message") continue;
 		const message = entry.message;
 		if (message?.role !== "assistant") return null;

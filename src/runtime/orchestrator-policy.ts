@@ -49,9 +49,7 @@ function intersectOrchestratorTools(
 }
 
 /** Keep only tools allowed for orchestration. */
-export function filterOrchestratorTools(
-	toolNames: readonly string[],
-): string[] {
+export function filterOrchestratorTools(toolNames: readonly string[]): string[] {
 	return normalizeOrchestratorTools(toolNames).filter((name) =>
 		ORCHESTRATOR_ALLOWED_TOOL_NAMES.has(name),
 	);
@@ -64,7 +62,7 @@ export function currentToolsAreControllerRestricted(
 ): boolean {
 	return (
 		previousMode &&
-		currentTools.every((name) => ORCHESTRATOR_ALLOWED_TOOL_NAMES.has(name))
+		currentTools.every((name) => filterOrchestratorTools([name]).length > 0)
 	);
 }
 
@@ -83,7 +81,7 @@ export function chooseOrchestratorBaseline(
 	if (isFreshRuntime && persistedTools)
 		return intersectOrchestratorTools(persistedTools, currentTools);
 	if (currentToolsAreControllerRestricted(previousMode, currentTools)) {
-		return [...(persistedTools ?? previousNormalTools ?? currentTools)];
+		return normalizeOrchestratorTools(persistedTools ?? previousNormalTools ?? currentTools);
 	}
 	return [...currentTools];
 }

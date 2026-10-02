@@ -39,7 +39,7 @@ const SECTION_FIELDS = [
 	},
 	{
 		title: "Workspace",
-		fields: ["cwd", "trust-project", "flags", "env"],
+		fields: ["cwd", "trust-project", "flags"],
 	},
 	{
 		title: "Capabilities",
@@ -112,7 +112,6 @@ export function buildSections(
 		value: String(meta ? (meta.trustProject ?? false) : (defs?.trustProject ?? false)),
 	});
 	fields.push({ label: "flags", value: none(meta?.flags ?? defs?.flags) });
-	fields.push({ label: "env", value: none(meta?.env ?? defs?.env) });
 	fields.push({ label: "tools", value: meta?.tools ?? defs?.tools ?? "all" });
 	fields.push({ label: "deny-tools", value: none(defs?.denyTools) });
 	fields.push({
@@ -184,6 +183,10 @@ interface CompletedSessionStats {
 	provider?: string;
 }
 
+function buildPromptSection(task: string | undefined): DetailSection | undefined {
+	return typeof task === "string" ? { title: "Prompt", fields: [{ label: "Prompt", value: task }] } : undefined;
+}
+
 function buildRuntimeSection(isRunning: boolean, r: RunningSubagent | CompletedSubagentResult): DetailSection {
 	const fields: Array<{ label: string; value: string }> = [];
 	const running = r as RunningSubagent;
@@ -214,6 +217,8 @@ function buildRuntimeSection(isRunning: boolean, r: RunningSubagent | CompletedS
 	}
 
 	if (running.activity) fields.push({ label: "activity", value: running.activity });
+	if (running.lastAssistantText) fields.push({ label: "latest assistant", value: running.lastAssistantText });
+	if (running.pendingToolCount != null) fields.push({ label: "pending tools", value: `${running.pendingToolCount}` });
 	if (running.sessionFile) fields.push({ label: "session", value: running.sessionFile });
 	if (running.surface) fields.push({ label: "pane", value: running.surface });
 	if (running.childProcess?.pid) fields.push({ label: "PID", value: `${running.childProcess.pid}` });
@@ -358,6 +363,7 @@ function completedRuntimeSection(args: {
 interface RecoveredResultDetails {
 	id: string;
 	name: string;
+	task?: string;
 	agent?: string;
 	status: "completed" | "cancelled" | "failed";
 	exitCode?: number;
@@ -392,6 +398,7 @@ function recoverResultDetails(entry: { [key: string]: unknown }): RecoveredResul
 	return {
 		id,
 		name,
+		task: typeof details.task === "string" ? details.task : undefined,
 		agent: typeof details.agent === "string" ? details.agent : undefined,
 		status,
 		exitCode: typeof details.exitCode === "number" ? details.exitCode : undefined,
@@ -421,6 +428,8 @@ export function buildRunningItems(ctx: OverlayContext): OverlayItem[] {
 		const meta = safeMeta(a.sessionFile);
 		const defs = a.agent ? safeDefs(a.agent, ctx.cwd) : null;
 		const sections = buildSections(defs, meta);
+		const prompt = buildPromptSection(a.task);
+		if (prompt) sections.unshift(prompt);
 		sections.push(buildRuntimeSection(true, a));
 
 		const stats: string[] = [];
@@ -449,6 +458,8 @@ export function buildRunningItems(ctx: OverlayContext): OverlayItem[] {
 			canKill: true,
 			canResume: false,
 			sessionFile: a.sessionFile,
+			noSession: a.noSession === true || meta?.noSession === true,
+			sessionLive: true,
 			onKill: async () => {
 				// Operator surface: a human may cancel even a non-recipient's run.
 				await stopRunningSubagent(a, { operator: true });
@@ -486,6 +497,8 @@ export async function buildCompletedItems(ctx: OverlayContext): Promise<OverlayI
 		const meta = r.sessionFile ? safeMeta(r.sessionFile) : undefined;
 		const defs = r.agent ? safeDefs(r.agent, ctx.cwd) : null;
 		const sections = buildSections(defs, meta);
+		const prompt = buildPromptSection(r.task);
+		if (prompt) sections.unshift(prompt);
 		sections.push(
 			completedRuntimeSection({
 				status: r.status,
@@ -512,6 +525,8 @@ export async function buildCompletedItems(ctx: OverlayContext): Promise<OverlayI
 			canKill: false,
 			canResume: true,
 			sessionFile: r.sessionFile,
+			noSession: meta?.noSession === true,
+			sessionLive: false,
 		});
 	}
 
@@ -536,6 +551,8 @@ export async function buildCompletedItems(ctx: OverlayContext): Promise<OverlayI
 				const meta = safeMeta(recovered.sessionFile);
 				const defs = recovered.agent ? safeDefs(recovered.agent, ctx.cwd) : null;
 				const sections = buildSections(defs, meta);
+				const prompt = buildPromptSection(recovered.task);
+				if (prompt) sections.unshift(prompt);
 				sections.push(
 					completedRuntimeSection({
 						status: recovered.status,
@@ -564,6 +581,8 @@ export async function buildCompletedItems(ctx: OverlayContext): Promise<OverlayI
 					canKill: false,
 					canResume: true,
 					sessionFile: recovered.sessionFile,
+					noSession: meta?.noSession === true,
+					sessionLive: false,
 				});
 			}
 		} catch {

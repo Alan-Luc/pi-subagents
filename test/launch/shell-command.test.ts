@@ -14,6 +14,8 @@ describe("interactive shell command builder", () => {
 		const previous = process.env.PI_SUBAGENT_PI_COMMAND;
 		process.env.PI_SUBAGENT_PI_COMMAND = fakePi;
 		process.env.LEAK_PROBE = "leaky-secret-value";
+		const previousTasks = process.env.PI_TASKS;
+		process.env.PI_TASKS = "/tmp/stale-tasks.json";
 		try {
 			const { command, capsulePath } = buildInteractiveShellCommand({
 				cwd: "/some/cwd",
@@ -42,11 +44,14 @@ describe("interactive shell command builder", () => {
 			assert.equal(capsule.overrides.PI_SUBAGENT_NAME, "child");
 			assert.equal(capsule.overrides.SECRET_OVERRIDE, "override-secret");
 			assert.equal(capsule.parentEnv.LEAK_PROBE, "leaky-secret-value");
+			assert.equal(capsule.parentEnv.PI_TASKS, undefined);
 			rmSync(capsulePath.slice(0, capsulePath.lastIndexOf("/")), { recursive: true, force: true });
 		} finally {
 			if (previous === undefined) delete process.env.PI_SUBAGENT_PI_COMMAND;
 			else process.env.PI_SUBAGENT_PI_COMMAND = previous;
 			delete process.env.LEAK_PROBE;
+			if (previousTasks === undefined) delete process.env.PI_TASKS;
+			else process.env.PI_TASKS = previousTasks;
 		}
 	});
 

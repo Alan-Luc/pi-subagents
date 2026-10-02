@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Key } from "@earendil-works/pi-tui";
 import { getEffectiveAgentDefinitions } from "../agents/definitions.ts";
 import { completedSubagentResults, runningSubagents } from "../runtime/state.ts";
 import { appendOrchestratorSessionState } from "../session/orchestrator-state.ts";
@@ -88,7 +89,7 @@ export function registerSubagentsView(pi: ExtensionAPI, runtime: OverlayRuntime)
 		},
 	});
 
-	pi.registerShortcut?.("alt+s", {
+	pi.registerShortcut?.(Key.ctrlAlt("s"), {
 		description: "Toggle subagent manager",
 		handler: async (_ctx) => {
 			if (activeOverlay) {

@@ -103,7 +103,7 @@ describe("widget manager direct module tests", () => {
 		const lines = widget.renderForTest();
 
 		assert.ok(lines.length <= 10);
-		assert.equal(lines.at(-1), "... (+1 more subagent — Alt+S to show all)");
+		assert.equal(lines.at(-1), "... (+1 more subagent — Ctrl+Alt+S to show all)");
 	});
 
 	it("shows a plural overflow hint with the hidden subagent count", () => {
@@ -112,7 +112,7 @@ describe("widget manager direct module tests", () => {
 		const lines = widget.renderForTest();
 
 		assert.ok(lines.length <= 10);
-		assert.equal(lines.at(-1), "... (+5 more subagents — Alt+S to show all)");
+		assert.equal(lines.at(-1), "... (+5 more subagents — Ctrl+Alt+S to show all)");
 	});
 
 	it("uses native totalTokens and caps ctx at 100%", () => {
@@ -359,7 +359,7 @@ describe("verified fan-out widget rows", () => {
 
 		assert.ok(lines.length <= 10, `widget must stay within budget: ${lines.length}`);
 		assert.match(lines.join("\n"), /\(\+\d+ more attempts\)/);
-		assert.equal(lines.at(-1), "... — Alt+S to show all", "one hint for the whole widget");
+		assert.equal(lines.at(-1), "... — Ctrl+Alt+S to show all", "one hint for the whole widget");
 		assert.match(lines.join("\n"), /attempt 1 ·/);
 	});
 
@@ -398,11 +398,11 @@ describe("verified fan-out widget rows", () => {
 		// budget: Child 2 folds into the single trailing hint.
 		assert.doesNotMatch(lines.join("\n"), /Child 2 \[scout\]/);
 		assert.equal(
-			lines.filter((line) => line.includes("Alt+S")).length,
+			lines.filter((line) => line.includes("Ctrl+Alt+S")).length,
 			1,
-			"exactly one Alt+S hint for the whole widget",
+			"exactly one Ctrl+Alt+S hint for the whole widget",
 		);
-		assert.equal(lines.at(-1), "... (+1 more subagent — Alt+S to show all)");
+		assert.equal(lines.at(-1), "... (+1 more subagent — Ctrl+Alt+S to show all)");
 	});
 
 	it("keeps the widget budget with several concurrent verified runs", () => {
@@ -418,6 +418,6 @@ describe("verified fan-out widget rows", () => {
 
 		assert.ok(lines.length <= 10, `widget must stay within budget: ${lines.length}\n${lines.join("\n")}`);
 		assert.match(lines.join("\n"), /attempt 1 · done/);
-		assert.match(lines.at(-1) ?? "", /\(\+1 more subagent — Alt\+S to show all\)/);
+		assert.match(lines.at(-1) ?? "", /\(\+1 more subagent — Ctrl\+Alt\+S to show all\)/);
 	});
 });

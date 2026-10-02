@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { launchBackgroundSubagent } from "../../src/launch/background.ts";
 import { coordinateSubagentLaunch } from "../../src/launch/launch-coordinator.ts";
 import {
@@ -28,7 +29,7 @@ async function readEventually(path: string): Promise<string> {
 	for (let attempt = 0; attempt < 50; attempt++) {
 		if (existsSync(path)) {
 			lastText = readFileSync(path, "utf8");
-			if (lastText.trim()) return lastText;
+			if (lastText.includes("ARGV=")) return lastText;
 		}
 		await new Promise((resolve) => setTimeout(resolve, 10));
 	}
@@ -212,6 +213,8 @@ describe("internal launch overrides (forcedCwd/launchEnv)", () => {
 		const parentSession = join(source, "parent.jsonl");
 		writeFileSync(parentSession, `${JSON.stringify(SESSION_HEADER)}\n`);
 		const childLog = join(source, "child-env.log");
+		const previousTasks = process.env.PI_TASKS;
+		process.env.PI_TASKS = join(source, "stale-tasks.json");
 		const fakeBin = writeExecutable(
 			createTestDir(),
 			"fake-pi",
@@ -222,37 +225,44 @@ describe("internal launch overrides (forcedCwd/launchEnv)", () => {
 				`printf 'PORT_OFFSET=%s\\n' "\${PORT_OFFSET-unset}" >> '${childLog}'`,
 				`printf 'FRONTMATTER_KEY=%s\\n' "\${FRONTMATTER_KEY-unset}" >> '${childLog}'`,
 				`printf 'COLLIDING=%s\\n' "\${COLLIDING-unset}" >> '${childLog}'`,
+				`printf 'PI_TASKS=%s\\n' "\${PI_TASKS-unset}" >> '${childLog}'`,
 				`printf 'ARGV=%s\\n' "$*" >> '${childLog}'`,
 			].join("\n"),
 		);
 		process.env.PI_SUBAGENT_PI_COMMAND = fakeBin;
 
-		await launchBackgroundSubagent(
-			{
-				name: "vf-candidate",
-				title: "VF candidate",
-				task: "Work here: !`pwd`",
-				agent: "cand",
-				forcedCwd: worktree,
-				launchEnv: { COMPOSE_PROJECT_NAME: "bo-run-w0", PORT_OFFSET: "1000", COLLIDING: "from-launch" },
-			},
-			{
-				cwd: source,
-				sessionManager: {
-					getSessionFile: () => parentSession,
-					getSessionId: () => "parent-session-id",
-					getLeafId: () => null,
+		try {
+			await launchBackgroundSubagent(
+				{
+					name: "vf-candidate",
+					title: "VF candidate",
+					task: "Work here: !`pwd`",
+					agent: "cand",
+					forcedCwd: worktree,
+					launchEnv: { COMPOSE_PROJECT_NAME: "bo-run-w0", PORT_OFFSET: "1000", COLLIDING: "from-launch" },
 				},
-			},
-			{ getContextWindow: () => undefined },
-		);
+				{
+					cwd: source,
+					sessionManager: {
+						getSessionFile: () => parentSession,
+						getSessionId: () => "parent-session-id",
+						getLeafId: () => null,
+					},
+				},
+				{ getContextWindow: () => undefined },
+			);
+		} finally {
+			if (previousTasks === undefined) delete process.env.PI_TASKS;
+			else process.env.PI_TASKS = previousTasks;
+		}
 
 		const childLogText = await readEventually(childLog);
-		assert.ok(childLogText.includes(`CWD=${worktree}`), `child ran in the worktree: ${childLogText}`);
+		assert.ok(childLogText.includes(`CWD=${realpathSync(worktree)}`), `child ran in the worktree: ${childLogText}`);
 		assert.ok(childLogText.includes("COMPOSE_PROJECT_NAME=bo-run-w0"), childLogText);
 		assert.ok(childLogText.includes("PORT_OFFSET=1000"), childLogText);
 		assert.ok(childLogText.includes("FRONTMATTER_KEY=from-frontmatter"), childLogText);
 		assert.ok(childLogText.includes("COLLIDING=from-launch"), childLogText);
+		assert.ok(childLogText.includes("PI_TASKS=unset"), childLogText);
 		// Task expansion ran once against the SOURCE tree, not the worktree.
 		const taskArtifact = readFileSync(extractTaskArtifactPath(childLogText), "utf8");
 		assert.ok(taskArtifact.includes(source), "task artifact embeds the source cwd");

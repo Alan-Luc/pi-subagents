@@ -26,6 +26,41 @@ function getNonEmptyLines(sessionFile: string): string[] {
 		.filter((line) => line.trim());
 }
 
+export interface ReadOnlySessionEntries {
+	entries: SessionEntry[];
+	malformedLines: number;
+	incompleteTrailingLine: boolean;
+}
+
+/** Read only complete JSONL records, tolerating live writes and bad lines. */
+export function readCompleteSessionEntries(sessionFile: string): ReadOnlySessionEntries {
+	const content = readFileSync(sessionFile, "utf8");
+	const lastNewline = content.lastIndexOf("\n");
+	const completeContent = lastNewline < 0 ? "" : content.slice(0, lastNewline);
+	const entries: SessionEntry[] = [];
+	let malformedLines = 0;
+
+	for (const line of completeContent.split("\n")) {
+		if (!line.trim()) continue;
+		try {
+			const value: unknown = JSON.parse(line);
+			if (typeof value !== "object" || value === null || Array.isArray(value) || typeof (value as { type?: unknown }).type !== "string") {
+				malformedLines++;
+				continue;
+			}
+			entries.push(value as SessionEntry);
+		} catch {
+			malformedLines++;
+		}
+	}
+
+	return {
+		entries,
+		malformedLines,
+		incompleteTrailingLine: content.length > 0 && (lastNewline < 0 || lastNewline < content.length - 1),
+	};
+}
+
 function parseEntryLine(sessionFile: string, line: string, lineNumber: number): SessionEntry {
 	try {
 		return JSON.parse(line) as SessionEntry;

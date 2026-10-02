@@ -91,7 +91,7 @@ describe("extension registration gating", () => {
 			subagentsExtension(api);
 			assert.deepEqual([...captured.tools].sort(), ["subagent", "subagent_kill", "subagent_resume"]);
 			assert.deepEqual(captured.commands, ["subagents"]);
-			assert.deepEqual(captured.shortcuts, ["alt+s"]);
+			assert.deepEqual(captured.shortcuts, ["ctrl+alt+s"]);
 			assert.deepEqual([...captured.renderers].sort(), ["subagent_ping", "subagent_result"]);
 			assert.deepEqual(
 				[...captured.handlers.keys()].sort(),

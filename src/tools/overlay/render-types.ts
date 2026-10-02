@@ -1,5 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { TUI } from "@earendil-works/pi-tui";
+import type { SessionTranscript } from "./session-view.ts";
 
 export type Theme = {
 	fg(tone: string, text: string): string;
@@ -20,8 +21,16 @@ export const TABS: TabDef[] = [
 	{ id: "running", label: "Running" },
 	{ id: "completed", label: "Completed" },
 	{ id: "agents", label: "Agents" },
-	{ id: "orchestrator", label: "Orchestrator" },
+	{ id: "orchestrator", label: "Tech Lead (Orchestrator)" },
 ];
+
+export interface SessionViewState {
+	kind: "session";
+	item: OverlayItem;
+	transcript: SessionTranscript;
+	scroll: number;
+	followTail: boolean;
+}
 
 export interface OverlayItem {
 	id: string;
@@ -41,6 +50,8 @@ export interface OverlayItem {
 	canToggle?: boolean;
 	onToggle?: () => void;
 	sessionFile?: string;
+	noSession?: boolean;
+	sessionLive?: boolean;
 	onKill?: () => Promise<void>;
 }
 
@@ -57,6 +68,7 @@ export interface DetailField {
 type ViewState =
 	| { kind: "list" }
 	| { kind: "detail"; item: OverlayItem; scroll: number }
+	| SessionViewState
 	| { kind: "confirm"; item: OverlayItem; confirmed: boolean }
 	| { kind: "editor"; itemIndex: number }
 	| { kind: "orchestrator-confirm"; targetMode: boolean; confirmed: boolean };

@@ -48,6 +48,8 @@ printenv | sort > '${envLog}'
 		process.env.RESUME_TEST_AGENT_DENY = "agent-denied";
 		const originalKeep = process.env.RESUME_TEST_KEEP;
 		process.env.RESUME_TEST_KEEP = "kept";
+		const originalTasks = process.env.PI_TASKS;
+		process.env.PI_TASKS = join(dir, "stale-tasks.json");
 		try {
 			const sessionFile = join(dir, "child.jsonl");
 			writeFileSync(
@@ -116,6 +118,7 @@ printenv | sort > '${envLog}'
 			const env = readFileSync(envLog, "utf8");
 			assert.doesNotMatch(env, /RESUME_TEST_AGENT_DENY=/, "persisted agent deny-env must filter the child env");
 			assert.doesNotMatch(env, /RESUME_TEST_GLOBAL_DENY=/, "global deny must filter the child env");
+			assert.doesNotMatch(env, /PI_TASKS=/, "obsolete task-store env must never reach a resumed child");
 			assert.match(env, /RESUME_TEST_KEEP=kept/, "non-denied env must still flow");
 			assert.match(env, /PI_SUBAGENT_NAME=resume-child/, "controlled overrides must still flow");
 			const entries = readSubagentLaunchMetadataEntries(sessionFile);
@@ -131,6 +134,8 @@ printenv | sort > '${envLog}'
 			else process.env.RESUME_TEST_AGENT_DENY = originalAgentDeny;
 			if (originalKeep === undefined) delete process.env.RESUME_TEST_KEEP;
 			else process.env.RESUME_TEST_KEEP = originalKeep;
+			if (originalTasks === undefined) delete process.env.PI_TASKS;
+			else process.env.PI_TASKS = originalTasks;
 		}
 	});
 
@@ -220,6 +225,7 @@ esac
 		const originalMux = process.env.PI_SUBAGENT_MUX;
 		const originalTmux = process.env.TMUX;
 		const originalKeep = process.env.RESUME_TEST_KEEP;
+		const originalTasks = process.env.PI_TASKS;
 		process.env.PATH = `${binDir}:${originalPath ?? ""}`;
 		process.env.PI_SUBAGENT_MUX = "tmux";
 		process.env.TMUX = "fake-tmux-socket";
@@ -227,6 +233,7 @@ esac
 		const originalCapsuleDir = process.env.PI_SUBAGENT_ENV_CAPSULE_DIR;
 		process.env.PI_SUBAGENT_ENV_CAPSULE_DIR = capsuleRoot;
 		process.env.RESUME_TEST_KEEP = "kept";
+		process.env.PI_TASKS = join(dir, "stale-tasks.json");
 
 		try {
 			const sessionFile = join(dir, "child.jsonl");
@@ -283,6 +290,7 @@ esac
 			assert.ok(capsuleMatch, "expected the resume command to invoke the capsule launcher");
 			const capsule = JSON.parse(readFileSync(capsuleMatch[1], "utf8"));
 			assert.equal(capsule.parentEnv.RESUME_TEST_AGENT_DENY, undefined, "persisted deny-env must filter the resumed child env");
+			assert.equal(capsule.parentEnv.PI_TASKS, undefined, "obsolete task-store env must never reach an interactive resumed child");
 			assert.equal(capsule.parentEnv.RESUME_TEST_KEEP, "kept", "non-denied env must still flow");
 			assert.equal(capsule.overrides.PI_SUBAGENT_NAME, "resume-child", "controlled overrides must survive");
 		} finally {
@@ -294,6 +302,8 @@ esac
 			else process.env.TMUX = originalTmux;
 			if (originalKeep === undefined) delete process.env.RESUME_TEST_KEEP;
 			else process.env.RESUME_TEST_KEEP = originalKeep;
+			if (originalTasks === undefined) delete process.env.PI_TASKS;
+			else process.env.PI_TASKS = originalTasks;
 			if (originalCapsuleDir === undefined) delete process.env.PI_SUBAGENT_ENV_CAPSULE_DIR;
 			else process.env.PI_SUBAGENT_ENV_CAPSULE_DIR = originalCapsuleDir;
 			delete process.env.FAKE_TMUX_LOG;

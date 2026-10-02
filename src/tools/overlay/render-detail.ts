@@ -1,5 +1,11 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { fitLine, renderScrollbar, wrapPlainText } from "./render-helpers.ts";
+import {
+	fitLine,
+	renderScrollbar,
+	sanitizeTerminalText,
+	wrapPlainText,
+	wrapPlainTextPreservingWhitespace,
+} from "./render-helpers.ts";
 import type { DetailField, DetailSection, OverlayItem, Theme } from "./render-types.ts";
 
 export function renderDetail(
@@ -85,15 +91,17 @@ function renderSectionTitle(title: string, theme: Theme, width: number): string 
 }
 
 function renderField(field: DetailField, labelWidth: number, valueWidth: number, theme: Theme): string[] {
+	const value = sanitizeTerminalText(field.value);
+	const wrap = field.label === "Prompt" || field.label === "latest assistant" || !field.label
+		? wrapPlainTextPreservingWhitespace
+		: wrapPlainText;
 	if (!field.label) {
-		return wrapPlainText(field.value, labelWidth + valueWidth + 2, Number.MAX_SAFE_INTEGER).map(
-			(line) => `   ${theme.fg("muted", line)}`,
-		);
+		return wrap(value, labelWidth + valueWidth + 2, Number.MAX_SAFE_INTEGER).map((line) => `   ${theme.fg("muted", line)}`);
 	}
 
 	const label = field.label.padEnd(labelWidth);
-	const value = field.value || "—";
-	const wrapped = wrapPlainText(value, valueWidth, Number.MAX_SAFE_INTEGER);
+	const displayValue = value || "—";
+	const wrapped = wrap(displayValue, valueWidth, Number.MAX_SAFE_INTEGER);
 	if (wrapped.length === 0) return [`   ${theme.fg("dim", label)}  ${theme.fg("text", "—")}`];
 	return wrapped.map((line, index) => {
 		const renderedLabel = index === 0 ? label : "".padEnd(labelWidth);

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { assert, createTestDir, join } from "../support/index.ts";
 import {
@@ -130,7 +130,7 @@ describe("candidate worktree creation", () => {
 		assert.equal(candidateWorktreeDirName(repoRoot, runId, 1), "repo-vf-20260822-101530-ab12cd34-w1");
 		assert.deepEqual(
 			worktrees.map((w) => w.path),
-			[1, 2, 3].map((i) => join(outer, candidateWorktreeDirName(repoRoot, runId, i))),
+			[1, 2, 3].map((i) => realpathSync(join(outer, candidateWorktreeDirName(repoRoot, runId, i)))),
 		);
 		for (const [i, worktree] of worktrees.entries()) {
 			assert.ok(existsSync(join(worktree.path, ".git")), `w${i + 1} is a linked worktree`);

@@ -27,6 +27,17 @@ function withoutAmbientSpawnGrant<T>(run: () => T): T {
 	}
 }
 
+async function readNonEmptyFileEventually(path: string): Promise<string> {
+	for (let attempt = 0; attempt < 100; attempt++) {
+		if (existsSync(path)) {
+			const value = readFileSync(path, "utf8");
+			if (value) return value;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	throw new Error(`Timed out waiting for ${path}`);
+}
+
 function writeTimedOutSession(
 	dir: string,
 	name: string,
@@ -180,8 +191,7 @@ describe("timeout resume guard", () => {
 			assert.deepEqual(running.timeoutBudget, { timeoutSeconds: 45, idleTimeoutSeconds: 20 });
 			assert.equal(running.timeoutBlocksResume, undefined);
 
-			await new Promise((resolve) => running.childProcess?.once("exit", resolve));
-			const childEnv = readFileSync(envDump, "utf8");
+			const childEnv = await readNonEmptyFileEventually(envDump);
 			assert.match(childEnv, /^PI_SUBAGENT_IDLE_TIMEOUT=20$/m);
 			assert.match(childEnv, /^PI_SUBAGENT_TIMEOUT=45$/m);
 			assert.match(childEnv, /^PI_SUBAGENT_TIMEOUT_WARN_THRESHOLD=80%$/m);

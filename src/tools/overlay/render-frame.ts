@@ -39,8 +39,17 @@ export function getFooterHints(state: OverlayState): FooterHint[] {
 	if (state.view.kind === "detail") {
 		return [
 			{ key: "↑↓", action: "scroll" },
+			{ key: "v", action: "session" },
 			{ key: "Esc", action: "back" },
-			{ key: "alt+s", action: "close" },
+			{ key: "ctrl+alt+s", action: "close" },
+		];
+	}
+
+	if (state.view.kind === "session") {
+		return [
+			{ key: "↑↓/jk", action: "scroll" },
+			{ key: "Esc", action: "details" },
+			{ key: "ctrl+alt+s", action: "close" },
 		];
 	}
 
@@ -151,13 +160,14 @@ function wrapFooterHints(hints: FooterHint[], theme: Theme, width: number): stri
 
 function compactTabLabel(label: string, width: number): string {
 	if (label.length <= width) return label;
-	const orchestratorModePrefix = "Orchestrator: ";
-	if (label.startsWith(orchestratorModePrefix)) {
-		const mode = label.slice(orchestratorModePrefix.length);
-		const compact = `Orch. ${mode}`;
+	const techLeadModePrefix = "Tech Lead (Orchestrator): ";
+	if (label.startsWith(techLeadModePrefix)) {
+		const mode = label.slice(techLeadModePrefix.length);
+		const compact = `Tech Lead: ${mode}`;
 		if (compact.length <= width) return compact;
+		if ("Tech Lead".length <= width) return "Tech Lead";
 		if (mode.length <= width) return mode;
 	}
-	if (label === "Orchestrator" && width >= 4) return "Orch.".slice(0, width);
+	if (label === "Tech Lead (Orchestrator)" && width >= "Tech Lead".length) return "Tech Lead";
 	return label.slice(0, width);
 }

@@ -1,4 +1,4 @@
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { stripTerminalSequences, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "./render-types.ts";
 
 function padToWidth(text: string, width: number): string {
@@ -54,8 +54,47 @@ export function firstLine(text: string, max = 60): string {
 	return line.length > max ? `${line.slice(0, max - 1)}…` : line;
 }
 
+export function sanitizeTerminalText(text: string): string {
+	const stripped = stripResidualTerminalSequences(stripTerminalSequences(text));
+	let safe = "";
+	for (const char of stripped) {
+		const code = char.codePointAt(0) ?? 0;
+		if (char === "\n" || char === "\t" || (code >= 0x20 && code !== 0x7f && !(code >= 0x80 && code <= 0x9f))) {
+			safe += char;
+		}
+	}
+	return safe;
+}
+
+function stripResidualTerminalSequences(text: string): string {
+	let result = "";
+	for (let i = 0; i < text.length; i++) {
+		if (text[i] !== "\x1b") {
+			result += text[i];
+			continue;
+		}
+
+		const next = text[i + 1];
+		if (next === "[" || next === "]" || next === "_" || next === "P" || next === "^" || next === "X") {
+			i++;
+			while (i + 1 < text.length) {
+				i++;
+				if (text[i] === "\x07" || (text[i] === "\x1b" && text[i + 1] === "\\")) {
+					if (text[i] === "\x1b") i++;
+					break;
+				}
+				if (next === "[" && text.charCodeAt(i) >= 0x40 && text.charCodeAt(i) <= 0x7e) break;
+			}
+			continue;
+		}
+
+		if (next) i++;
+	}
+	return result;
+}
+
 export function wrapPlainText(text: string, width: number, maxLines = 2): string[] {
-	const normalized = text.replace(/\s+/g, " ").trim();
+	const normalized = sanitizeTerminalText(text).replace(/\s+/g, " ").trim();
 	if (!normalized) return [];
 
 	const lines: string[] = [];
@@ -80,6 +119,33 @@ export function wrapPlainText(text: string, width: number, maxLines = 2): string
 		lines[maxLines - 1] = addEllipsis(lines[maxLines - 1], width);
 	}
 	return lines;
+}
+
+export function wrapPlainTextPreservingWhitespace(text: string, width: number, maxLines = 2): string[] {
+	const safe = sanitizeTerminalText(text);
+	if (!safe) return [];
+
+	const lines: string[] = [];
+	for (const logicalLine of safe.split("\n")) {
+		if (!logicalLine) {
+			lines.push("");
+			continue;
+		}
+		let current = "";
+		for (const char of logicalLine) {
+			if (current && visibleWidth(`${current}${char}`) > width) {
+				lines.push(current);
+				current = "";
+			}
+			current += char;
+		}
+		lines.push(current);
+	}
+
+	if (lines.length <= maxLines) return lines;
+	const visible = lines.slice(0, maxLines);
+	visible[maxLines - 1] = addEllipsis(visible[maxLines - 1], width);
+	return visible;
 }
 
 function consumedAll(input: string, lines: string[]): boolean {

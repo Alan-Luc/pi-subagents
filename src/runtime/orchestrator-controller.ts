@@ -27,7 +27,7 @@ import {
 	normalizeOrchestratorTools,
 	sameOrchestratorTools,
 } from "./orchestrator-policy.ts";
-import { ORCHESTRATOR_BASE_PROMPT } from "./orchestrator-prompt.ts";
+import { getOrchestratorPrompt } from "./orchestrator-prompt.ts";
 import { runningSubagents } from "./state.ts";
 
 type OrchestratorBlockedReason =
@@ -110,7 +110,7 @@ export interface OrchestratorController {
 	handleSessionShutdown(ctx: OrchestratorContext): void;
 	beforeAgentStart(
 		event: Pick<BeforeAgentStartEvent, "systemPromptOptions">,
-	): { systemPrompt: string } | undefined;
+	): undefined;
 	handleToolCall(
 		event: Pick<ToolCallEvent, "toolName">,
 	): ToolCallEventResult | undefined;
@@ -180,6 +180,10 @@ export function createOrchestratorController(
 
 	function setCurrentTools(toolNames: readonly string[]): void {
 		api.setActiveTools(normalizeOrchestratorTools(toolNames));
+	}
+
+	function filterAvailableOrchestratorTools(toolNames: readonly string[]): string[] {
+		return filterOrchestratorTools(toolNames);
 	}
 
 	function persistSessionState(
@@ -321,12 +325,12 @@ export function createOrchestratorController(
 			return;
 		}
 
-		normalActiveTools = baseline;
+		normalActiveTools = normalizeOrchestratorTools(baseline);
 		currentMode = enabled;
 		const desiredTools = enabled
 			? currentToolsAreControllerRestricted(previousMode, currentTools)
-				? filterOrchestratorTools(baseline)
-				: filterOrchestratorTools(currentTools)
+				? filterAvailableOrchestratorTools(baseline)
+				: filterAvailableOrchestratorTools(currentTools)
 			: baseline;
 		setCurrentTools(desiredTools);
 		modeActiveTools = enabled ? [...desiredTools] : [];
@@ -339,9 +343,9 @@ export function createOrchestratorController(
 		previousActiveTools: readonly string[],
 	): void {
 		currentMode = previousMode;
-		normalActiveTools = [...previousNormalTools];
+		normalActiveTools = normalizeOrchestratorTools(previousNormalTools);
 		modeActiveTools = previousMode
-			? [...filterOrchestratorTools(previousActiveTools)]
+			? [...filterAvailableOrchestratorTools(previousActiveTools)]
 			: [];
 		try {
 			setCurrentTools(previousActiveTools);
@@ -399,7 +403,7 @@ export function createOrchestratorController(
 
 			try {
 				const desiredTools = enabled
-					? filterOrchestratorTools(previousActiveTools)
+					? filterAvailableOrchestratorTools(previousActiveTools)
 					: nextNormalTools;
 				setCurrentTools(desiredTools);
 				currentMode = enabled;
@@ -520,27 +524,29 @@ export function createOrchestratorController(
 
 			const currentTools = getCurrentTools();
 			if (
-				currentTools.some((name) => !filterOrchestratorTools([name]).length)
+				currentTools.some((name) => !filterAvailableOrchestratorTools([name]).length)
 			) {
 				normalActiveTools = [...currentTools];
 				baselineDirty = true;
 			}
-			const allowedTools = filterOrchestratorTools(currentTools);
+			const allowedTools = filterAvailableOrchestratorTools(currentTools);
 			if (!sameOrchestratorTools(currentTools, allowedTools))
 				setCurrentTools(allowedTools);
 			modeActiveTools = [...allowedTools];
-			const appendPrompt = event.systemPromptOptions?.appendSystemPrompt;
-			return {
-				systemPrompt: isNonEmpty(appendPrompt)
-					? `${ORCHESTRATOR_BASE_PROMPT}\n\n${appendPrompt}`
-					: ORCHESTRATOR_BASE_PROMPT,
-			};
+			if (event.systemPromptOptions) {
+				const appendPrompt = event.systemPromptOptions.appendSystemPrompt;
+				const orchestratorPrompt = getOrchestratorPrompt();
+				event.systemPromptOptions.appendSystemPrompt = isNonEmpty(appendPrompt)
+					? `${appendPrompt}\n\n${orchestratorPrompt}`
+					: orchestratorPrompt;
+			}
+			return undefined;
 		},
 		handleToolCall(event) {
 			if (
 				childSession ||
 				!currentMode ||
-				filterOrchestratorTools([event.toolName]).length > 0
+				filterAvailableOrchestratorTools([event.toolName]).length > 0
 			)
 				return undefined;
 			return {

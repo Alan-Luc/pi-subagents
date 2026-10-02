@@ -25,6 +25,8 @@ export const PANE_IDENTITY_ENV_PATTERNS = [
 
 /** Shell-relative bookkeeping that is meaningless outside the shell that set it. */
 const VOLATILE_SHELL_ENV_KEYS = ["OLDPWD", "PWD", "SHLVL", "_"] as const;
+/** Obsolete cross-session task-store state must never enter child sessions. */
+const DEFAULT_DENY_ENV_PATTERNS = ["PI_TASKS"] as const;
 
 export function parseDenyEnvList(raw: string | undefined): string[] {
 	const names: string[] = [];
@@ -112,5 +114,7 @@ export function buildParentEnvSnapshot(
 	for (const [key, value] of Object.entries(env)) {
 		if (typeof value === "string") present[key] = value;
 	}
-	return stripVolatileShellEnv(filterDeniedEnv(present, denyPatterns));
+	return stripVolatileShellEnv(
+		filterDeniedEnv(present, [...DEFAULT_DENY_ENV_PATTERNS, ...denyPatterns]),
+	);
 }

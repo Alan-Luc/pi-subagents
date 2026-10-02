@@ -1,5 +1,7 @@
 # pi-subagents
 
+> **Maintained fork:** Based on [edxeth/pi-subagents](https://github.com/edxeth/pi-subagents) 2.9.2 at `cf6dbf4`; preserves the customized monitor, Session/mouse UI, append-only orchestrator prompt composition, independent session tasks, and native work-log access.
+
 `pi-subagents` is a highly curated multi-agent framework for [Pi agent harness](https://github.com/earendil-works/pi).
 
 It began as a fork of [HazAT/pi-interactive-subagents](https://github.com/HazAT/pi-interactive-subagents), then grew into a monumental refactor: named agents, interactive panes, background workers, async parallelism, blocking agents, child-to-parent communication, forked context, a beautiful TUI widget, orchestrator mode, and much more!
@@ -70,7 +72,7 @@ of staying focused on coordination.
 
 Every production multi-agent framework hits this same limit. Anthropic's
 Claude Code has `COORDINATOR_MODE` with the same mechanism: restricted tool
-set, replacement system prompt, worker isolation. OpenAI Codex users file
+set, mode-specific prompt delta, worker isolation. OpenAI Codex users file
 issues asking for a mode where the main agent "cannot execute, only
 delegate." The ADCS delegation chain spec encodes it as a scope-intersection
 invariant: each hop narrows permissions, never widens.
@@ -92,7 +94,7 @@ Simple requests do not benefit. A single sub-agent handles those faster.
 
 #### How to use it
 
-Open `/subagents` or press `Alt+S`, then select Orchestrator. You can turn
+Open `/subagents` or press `Ctrl+Alt+S`, then select Tech Lead (Orchestrator). You can turn
 the mode on or off in the current conversation, or start a fresh conversation.
 Switching in place keeps your conversation. Starting fresh leaves the old
 conversation available through `/resume`.
@@ -114,14 +116,17 @@ To use it by default for new conversations, add this to your shell configuration
 export PI_ORCHESTRATOR_MODE=1
 ```
 
-Enable that and two things change:
+When enabled, two things change:
 
-1. **Tool restriction.** Removes read, bash, edit, write,
-   grep, find, and every other tool except subagent,
-   subagent_kill, subagent_resume. The LLMs cannot call what they cannot see.
-2. **System prompt replacement.** Pi's "expert coding assistant" prompt gets
-   replaced with one that defines the orchestrator role: decompose, delegate,
-   synthesize. The replacement preserves Pi's `APPEND_SYSTEM.md` content.
+1. **Tool restriction.** Removes read, bash, edit, write, grep, find, and
+   other repository tools while retaining subagent, subagent_kill,
+   subagent_resume, the four session-local Task tools (TaskCreate, TaskList,
+   TaskGet, and TaskUpdate), and `work_log` for append-only completion records.
+   The Task tools manage the current session's checklist; they do not
+   coordinate work across sessions.
+2. **Prompt delta.** Pi keeps its base prompt, context files, and existing
+   appended instructions, then appends the mode-specific orchestrator role:
+   decompose, delegate, and synthesize.
 
 Children do not inherit the parent agent's role or system prompt. Each child
 runs as a separate Pi process with its own agent definition and prompt chain.
@@ -909,7 +914,7 @@ User-facing knobs:
 
 | Variable | Use |
 | --- | --- |
-| `PI_ORCHESTRATOR_MODE` | Set `1` to turn the parent into an orchestrator (delegation-only tools, replacement system prompt) |
+| `PI_ORCHESTRATOR_MODE` | Set `1` to turn the parent into an orchestrator (delegation-only tools, mode-specific prompt delta) |
 | `PI_SUBAGENT_PI_COMMAND` | Launch children through a wrapper command |
 | `PI_SUBAGENT_MUX` | Force `herdr`, `cmux`, `tmux`, `zellij`, or `wezterm` |
 | `PI_CODING_AGENT_DIR` | Use a different Pi agent config root |
