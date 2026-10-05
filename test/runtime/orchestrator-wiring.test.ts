@@ -128,7 +128,7 @@ describe("orchestrator extension wiring", () => {
 		assert.equal(start?.systemPrompt, undefined);
 		assert.match(
 			startEvent.systemPromptOptions.appendSystemPrompt ?? "",
-			/^preserve this\n\nYou are an orchestrator/,
+			/^preserve this\n\nYou are in delegation-only orchestrator mode/,
 		);
 
 		const blocked = harness.handlers.get("tool_call")?.(

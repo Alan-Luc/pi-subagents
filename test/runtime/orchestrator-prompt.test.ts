@@ -115,129 +115,29 @@ function createExtensionHarness(environment: Record<string, string | undefined>)
 
 
 describe("orchestrator prompt", () => {
-	it("describes session-local Task tools without shared coordination", () => {
-		for (const tool of TASK_TOOLS) assert.match(ORCHESTRATOR_COMMON_PROMPT, new RegExp(`\\*\\*${tool}\\*\\*`));
-		assert.match(ORCHESTRATOR_COMMON_PROMPT, /this session's own meaningful multi-step work/);
-		assert.doesNotMatch(ORCHESTRATOR_COMMON_PROMPT, /coordination workflow supplied|parent task|shared task/);
-	});
-
-	it("requires self-contained implementation evidence without authorizing commits", () => {
-		assert.doesNotMatch(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Run the tests, commit, and report the hash\./,
-		);
-		assert.match(ORCHESTRATOR_BASE_PROMPT, /Implement the null-pointer fix/);
-		assert.match(ORCHESTRATOR_BASE_PROMPT, /Run the focused tests/);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Report the changed files, commands run, and actual results as artifacts\/evidence/,
-		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Do not commit or push; those actions are prohibited unless the user separately authorizes them\./,
-		);
-	});
-
-	it("requires a terse non-trivial preflight without a named heading", () => {
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Before the first tool call or delegation on non-trivial work, give a terse 1–3 sentence preflight/,
-		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/stating the objective\/result being addressed, then the approach and planned checks, plus what completion and verification look like/,
-		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Lead with the intended result or decision, not chronology/,
-		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Skip it for trivial Q&A, no-ops, or direct clarification questions/,
-		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/A named BLUF heading is optional; do not require one/,
-		);
-		assert.doesNotMatch(ORCHESTRATOR_BASE_PROMPT, /BLUF:/);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Continue progress updates only at meaningful slice boundaries/,
-		);
-	});
-
-	it("uses the concise BLUF communication rule", () => {
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/- \*\*BLUF communication\*\* -- Use BLUF structure for every user-facing answer\./,
-		);
-		assert.doesNotMatch(ORCHESTRATOR_BASE_PROMPT, /Every user-facing explanation must begin/);
-		assert.doesNotMatch(ORCHESTRATOR_BASE_PROMPT, /silently inspect the first sentence/);
-		assert.doesNotMatch(ORCHESTRATOR_BASE_PROMPT, /Good opening:/);
-	});
-
-	it("assigns verification acceptance and the final integration claim to the Tech Lead", () => {
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/When warranted, delegate an independent verification seam/,
-		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/The top-level Tech Lead reviews and accepts the returned artifacts and focused check evidence, then owns the final integration claim\./,
-		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/A verifier's prose alone is not sufficient evidence/,
-		);
-	});
-
-	it("selects the smallest lane and keeps briefs information-dense", () => {
+	it("adds only the delegation-specific mode delta", () => {
 		for (const phrase of [
-			/Trivial conversational answers or no-ops: do not spawn a sub-agent/,
-			/Small known seams \(roughly 1–2 known files with clear behavior\): use one implementation agent, one pass/,
-			/Unknown or root-cause work: use one bounded explorer only until the seam and callers are known/,
-			/synthesize concrete findings into the implementation brief so research is not repeated/,
-			/Use a separate reviewer only for security, permissions, migrations\/data loss, broad or high-risk changes, or an explicit user request/,
-			/Parallelize only independent, non-overlapping scopes; keep shared contracts with one owner/,
-			/Resume high-overlap context instead of spawning fresh\. Spawn fresh only for independent verification or a genuinely different seam/,
-			/low overlap alone is not a reason to fan out/,
-			/Stop broad reading once enough evidence exists to implement safely/,
-			/Include paths and line evidence already known; do not hand understanding back to the worker/,
+			/You are in delegation-only orchestrator mode/,
+			/Do not inspect files, run commands, edit code, or perform implementation work yourself/,
+			/Delegate substantive work to sub-agents, then synthesize their returned results/,
+			/under the existing system, AGENTS\.md, and Tech Lead instructions/,
+			/Task tools manage this session's checklist/,
+			/work_log may append required records/,
+			/Never fabricate or predict asynchronous results/,
 		]) {
 			assert.match(ORCHESTRATOR_BASE_PROMPT, phrase);
 		}
-
-		const briefSections = [
-			"1. Objective",
-			"2. Known facts/root cause",
-			"3. Exact owned files and change",
-			"4. Non-goals",
-			"5. Focused checks",
-			"6. Required return",
-		];
-		let previous = -1;
-		for (const section of briefSections) {
-			const index = ORCHESTRATOR_BASE_PROMPT.indexOf(section);
-			assert.ok(index > previous, `${section} must follow the default brief ordering`);
-			previous = index;
+		for (const duplicatedPolicy of [
+			/Before the first tool call/,
+			/BLUF communication/,
+			/Use this six-part brief format/,
+			/Choose the smallest coordination path/,
+			/Continue vs spawn fresh/,
+			/Task workflow/,
+		]) {
+			assert.doesNotMatch(ORCHESTRATOR_BASE_PROMPT, duplicatedPolicy);
 		}
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Use this six-part brief format by default, especially for fast-lane work/,
-		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Keep it concise: bullets are preferred, and known sections should not be padded with boilerplate\./,
-		);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/For deep\/high-risk work, append only the extra fields actually needed: user intent; dependencies\/shared contracts; acceptance criteria; risks\/edge cases; stop\/escalation conditions\./,
-		);
-		assert.match(ORCHESTRATOR_BASE_PROMPT, /Do not replace the default core\./);
-		assert.match(
-			ORCHESTRATOR_BASE_PROMPT,
-			/Research found the implementation seam \| \*\*Resume\*\*/,
-		);
+		assert.ok(ORCHESTRATOR_BASE_PROMPT.length < 1_000);
 	});
 
 	it("keeps self-managed Task tools available without cross-session coordination", () => {
@@ -253,7 +153,7 @@ describe("orchestrator prompt", () => {
 	it("keeps append-only work logging available without repository tools", () => {
 		assert.ok(ORCHESTRATOR_ALLOWED_TOOL_NAMES.has(WORK_LOG_TOOL_NAME));
 		assert.deepEqual(filterOrchestratorTools(["read", WORK_LOG_TOOL_NAME]), [WORK_LOG_TOOL_NAME]);
-		assert.match(ORCHESTRATOR_BASE_PROMPT, /work_log.*required verified work or decision record/s);
+		assert.match(ORCHESTRATOR_BASE_PROMPT, /work_log may append required records/);
 	});
 
 	it("forwards all self-managed Task tools to workers", () => {
@@ -312,7 +212,7 @@ describe("orchestrator prompt", () => {
 			"prior append sentinel",
 			"Tech Lead sentinel",
 			"artifact brief sentinel",
-			"You are an orchestrator",
+			"You are in delegation-only orchestrator mode",
 		]) {
 			assert.match(renderedPrompt, new RegExp(sentinel));
 		}
@@ -322,7 +222,7 @@ describe("orchestrator prompt", () => {
 			"prior append sentinel",
 			"Tech Lead sentinel",
 			"artifact brief sentinel",
-			"You are an orchestrator",
+			"You are in delegation-only orchestrator mode",
 		]) {
 			const index = renderedPrompt.indexOf(sentinel);
 			assert.ok(index > previousIndex, `${sentinel} must preserve append order`);

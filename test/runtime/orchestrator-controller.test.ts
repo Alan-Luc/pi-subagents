@@ -302,7 +302,7 @@ describe("orchestrator runtime persistence", () => {
 		assert.equal(result, undefined);
 		assert.match(
 			event.systemPromptOptions.appendSystemPrompt ?? "",
-			/^keep this\n\nYou are an orchestrator/,
+			/^keep this\n\nYou are in delegation-only orchestrator mode/,
 		);
 		assert.equal(controller.handleToolCall({ toolName: "bash" })?.block, true);
 		assert.equal(
