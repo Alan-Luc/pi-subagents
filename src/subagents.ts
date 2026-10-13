@@ -259,8 +259,60 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 	});
 
 	pi.on("before_agent_start", (event) => {
-		const rosterResult = pendingAmbientRoster
-			? {
+		const activeTools =
+			typeof pi.getActiveTools === "function" ? pi.getActiveTools() : null;
+		const subagentToolActive =
+			shouldRegister(SUBAGENT_TOOL_NAME) &&
+			(activeTools === null || activeTools.includes(SUBAGENT_TOOL_NAME));
+
+		let rosterResult:
+			| {
+					message: {
+						customType: "subagent_roster";
+						content: string;
+						display: false;
+						details: {
+							entries: AgentListEntry[];
+							signature: string;
+							supersedes?: true;
+						};
+					};
+			  }
+			| undefined;
+		if (!subagentToolActive) {
+			const supersedesRoster =
+				pendingAmbientRoster !== null || lastAmbientRosterSignature !== null;
+			pendingAmbientRoster = null;
+			lastAmbientRosterSignature = null;
+			if (supersedesRoster) {
+				rosterResult = {
+					message: {
+						customType: "subagent_roster",
+						content: "",
+						display: false,
+						details: { entries: [], signature: "disabled", supersedes: true },
+					},
+				};
+			}
+		} else {
+			if (!pendingAmbientRoster && lastAmbientRosterSignature === null && latestContext) {
+				const entries = getAgentListEntries(latestContext.cwd);
+				const hasDescribedAgents = getEffectiveAgentDefinitions(
+					latestContext.cwd,
+				).some((agent) => agent.description?.trim());
+				if (entries.length > 0 || hasDescribedAgents) {
+					pendingAmbientRoster = {
+						signature: getAgentListSignature(entries),
+						content: renderAgentListReminder(entries, {
+							awaitAllLaunches: isHeadlessLaunchSession(latestContext.hasUI),
+						}),
+						entries,
+						supersedes: true,
+					};
+				}
+			}
+			if (pendingAmbientRoster) {
+				rosterResult = {
 					message: {
 						customType: "subagent_roster",
 						content: pendingAmbientRoster.content,
@@ -271,11 +323,10 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 							...(pendingAmbientRoster.supersedes ? { supersedes: true } : {}),
 						},
 					},
-				}
-			: undefined;
-		if (pendingAmbientRoster) {
-			lastAmbientRosterSignature = pendingAmbientRoster.signature;
-			pendingAmbientRoster = null;
+				};
+				lastAmbientRosterSignature = pendingAmbientRoster.signature;
+				pendingAmbientRoster = null;
+			}
 		}
 
 		const orchestratorResult = orchestrator.beforeAgentStart(event);
@@ -305,8 +356,8 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 		classifyAssistantMessageForMixedBatch(message, (agent, cwd) => (agent ? loadAgentDefaults(agent, cwd) : null));
 	});
 
-	pi.on("tool_call", (event) => {
-		const orchestratorResult = orchestrator.handleToolCall(event);
+	pi.on("tool_call", (event, ctx) => {
+		const orchestratorResult = orchestrator.handleToolCall(event, ctx);
 		if (orchestratorResult) return orchestratorResult;
 		if (event.toolName !== SUBAGENT_TOOL_NAME) return {};
 		const input = event.input as Partial<SubagentParamsInput>;
