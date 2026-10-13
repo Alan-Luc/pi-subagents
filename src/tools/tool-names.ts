@@ -11,6 +11,7 @@ export const SUBAGENT_RESUME_TOOL_NAME = "subagent_resume";
 export const SUBAGENT_KILL_TOOL_NAME = "subagent_kill";
 export const SET_TAB_TITLE_TOOL_NAME = "set_tab_title";
 export const WORK_LOG_TOOL_NAME = "work_log";
+export const ASK_USER_QUESTION_TOOL_NAME = "ask_user_question";
 
 // Child-side protocol tools provided by the bundled subagent extension:
 export const CALLER_PING_TOOL_NAME = "caller_ping";
@@ -65,6 +66,11 @@ export const ORCHESTRATOR_ALLOWED_TOOL_NAMES: ReadonlySet<string> = new Set([
 	SUBAGENT_RESUME_TOOL_NAME,
 	SET_TAB_TITLE_TOOL_NAME,
 	WORK_LOG_TOOL_NAME,
+	ASK_USER_QUESTION_TOOL_NAME,
+	"bg_run",
+	"bg_status",
+	"bg_logs",
+	"bg_kill",
 	"TaskCreate",
 	"TaskList",
 	"TaskGet",

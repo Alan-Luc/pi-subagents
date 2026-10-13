@@ -15,7 +15,11 @@ import { filterOrchestratorTools } from "../../src/runtime/orchestrator-policy.t
 import { createOrchestratorController, type OrchestratorRuntimeAPI } from "../../src/runtime/orchestrator-controller.ts";
 import subagentsExtension from "../../src/subagents.ts";
 import { getSubagentToolLaunchArgs } from "../../src/tools/policy.ts";
-import { ORCHESTRATOR_ALLOWED_TOOL_NAMES, WORK_LOG_TOOL_NAME } from "../../src/tools/tool-names.ts";
+import {
+	ASK_USER_QUESTION_TOOL_NAME,
+	ORCHESTRATOR_ALLOWED_TOOL_NAMES,
+	WORK_LOG_TOOL_NAME,
+} from "../../src/tools/tool-names.ts";
 
 const ORCHESTRATOR_BASE_PROMPT = getOrchestratorPrompt();
 const { buildSystemPrompt } = (await import(
@@ -30,6 +34,11 @@ const { buildSystemPrompt } = (await import(
 };
 const TASK_TOOLS = ["TaskCreate", "TaskList", "TaskGet", "TaskUpdate"];
 const FORBIDDEN_TASK_TOOLS = ["TaskExecute", "TaskOutput", "TaskStop"];
+const BACKGROUND_TOOLS = ["bg_run", "bg_status", "bg_logs", "bg_kill"];
+const HOST_COORDINATION_TOOLS = [
+	ASK_USER_QUESTION_TOOL_NAME,
+	...BACKGROUND_TOOLS,
+];
 
 function createTempDir(prefix: string): string {
 	return mkdtempSync(join(tmpdir(), prefix));
@@ -168,6 +177,18 @@ describe("orchestrator prompt", () => {
 		assert.match(ORCHESTRATOR_BASE_PROMPT, /work_log may append required records/);
 	});
 
+	it("keeps host coordination tools available", () => {
+		assert.ok(
+			HOST_COORDINATION_TOOLS.every((name) =>
+				ORCHESTRATOR_ALLOWED_TOOL_NAMES.has(name),
+			),
+		);
+		assert.deepEqual(
+			filterOrchestratorTools(["bash", ...HOST_COORDINATION_TOOLS]),
+			HOST_COORDINATION_TOOLS,
+		);
+	});
+
 	it("forwards all self-managed Task tools to workers", () => {
 		for (const tool of TASK_TOOLS) {
 			assert.deepEqual(getSubagentToolLaunchArgs(tool, new Set(), false), [
@@ -177,8 +198,15 @@ describe("orchestrator prompt", () => {
 		}
 	});
 
-	it("keeps session task tools in Pi's rendered prompt", () => {
-		let tools = ["read", "bash", "subagent", WORK_LOG_TOOL_NAME, ...TASK_TOOLS];
+	it("keeps session coordination tools in Pi's rendered prompt", () => {
+		let tools = [
+			"read",
+			"bash",
+			"subagent",
+			WORK_LOG_TOOL_NAME,
+			...HOST_COORDINATION_TOOLS,
+			...TASK_TOOLS,
+		];
 		const session = SessionManager.inMemory(createTempDir("pi-subagents-controller-"));
 		const events = { on: () => () => undefined, emit: () => undefined };
 		const api: OrchestratorRuntimeAPI = {
@@ -207,7 +235,13 @@ describe("orchestrator prompt", () => {
 			agentDir: createTempDir("pi-subagents-agent-"),
 		});
 		controller.handleSessionStart(context);
-		assert.deepEqual(tools, ["read", "subagent", WORK_LOG_TOOL_NAME, ...TASK_TOOLS]);
+		assert.deepEqual(tools, [
+			"read",
+			"subagent",
+			WORK_LOG_TOOL_NAME,
+			...HOST_COORDINATION_TOOLS,
+			...TASK_TOOLS,
+		]);
 		assert.deepEqual(notices, []);
 		const event = {
 			systemPromptOptions: {
@@ -244,7 +278,25 @@ describe("orchestrator prompt", () => {
 		}
 		assert.equal(controller.handleToolCall({ toolName: "TaskGet", input: {} }, { cwd: "/tmp" }), undefined);
 		assert.equal(controller.handleToolCall({ toolName: WORK_LOG_TOOL_NAME, input: {} }, { cwd: "/tmp" }), undefined);
+		for (const toolName of HOST_COORDINATION_TOOLS) {
+			assert.equal(
+				controller.handleToolCall(
+					{ toolName, input: {} },
+					{ cwd: "/tmp" },
+				),
+				undefined,
+			);
+		}
 		assert.equal(controller.handleToolCall({ toolName: "subagent", input: {} }, { cwd: "/tmp" }), undefined);
+		assert.equal(controller.setMode(false, context).ok, true);
+		assert.deepEqual(tools, [
+			"read",
+			"bash",
+			"subagent",
+			WORK_LOG_TOOL_NAME,
+			...HOST_COORDINATION_TOOLS,
+			...TASK_TOOLS,
+		]);
 	});
 
 	it("adds exactly one orchestrator delta when Pi has no prior append", () => {
