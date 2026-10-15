@@ -409,6 +409,8 @@ export function registerSubagentCoreTools(
 				"- Always provide name and title. name is a machine handle: lower-kebab <scope>-<role>, 2-4 words, max 32 chars, e.g. auth-scout, diff-reviewer, session-tester. title is human prose: sentence case, 3-8 words, e.g. Auth implementation map.\n" +
 				"- If launching one helper, pass agent/name/title/task normally.\n" +
 				"- If launching multiple helpers for one user request, make one subagent call with children:[...] so all helpers start before any waiting happens.\n" +
+				"- Before a pure async launch, derive the full ready set from approved dependencies and exact path ownership; launch every ready disjoint helper slice in one children batch.\n" +
+				"- Complete ready parent-owned work before that launch; the runtime may end the parent turn after the batch, so never claim yielded parent work remains active.\n" +
 				"- If the user names multiple agents, include each named agent exactly once. Do not substitute one agent for another.\n" +
 				"- Leave model/thinking unset unless the user named concrete values. Do not infer them from quality, depth, urgency, safety, or cost language.\n" +
 				"\n" +

@@ -66,6 +66,7 @@ import "./runtime/timeout-result-delivery.test.ts";
 import "./runtime/state.test.ts";
 import "./runtime/elapsed-format.test.ts";
 import "./runtime/fork-session-manager.test.ts";
+import "./runtime/orchestrator-artifacts.test.ts";
 import "./runtime/orchestrator-controller.test.ts";
 import "./runtime/orchestrator-wiring.test.ts";
 import "./runtime/orchestrator-prompt.test.ts";

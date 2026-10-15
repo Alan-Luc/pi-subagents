@@ -118,15 +118,18 @@ export PI_ORCHESTRATOR_MODE=1
 
 When enabled, two things change:
 
-1. **Tool restriction.** Removes read, bash, edit, write, grep, find, and
-   other repository tools while retaining subagent, subagent_kill,
-   subagent_resume, the four session-local Task tools (TaskCreate, TaskList,
-   TaskGet, and TaskUpdate), and `work_log` for append-only completion records.
-   The Task tools manage the current session's checklist; they do not
-   coordinate work across sessions.
+1. **Tool restriction.** Blocks repository tools except the canonical artifact
+   operations. `read` remains available only when it was active in the normal
+   baseline; `write` and `edit` also require a compatible version-1 capability
+   announcement from the root artifact-contracts extension. All artifact paths
+   are canonical `.harness` paths checked against the live cwd and symlink-free
+   before execution. Subagent, subagent_kill, subagent_resume, the four
+   session-local Task tools (TaskCreate, TaskList, TaskGet, and TaskUpdate), and
+   `work_log` remain available for orchestration. The Task tools manage the
+   current session's checklist; they do not coordinate work across sessions.
 2. **Prompt delta.** Pi keeps its base prompt, context files, and existing
    appended instructions, then appends the mode-specific orchestrator role:
-   decompose, delegate, and synthesize.
+   derive the ready set, batch disjoint workers, delegate, and synthesize.
 
 Children do not inherit the parent agent's role or system prompt. Each child
 runs as a separate Pi process with its own agent definition and prompt chain.

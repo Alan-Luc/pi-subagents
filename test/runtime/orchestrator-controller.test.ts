@@ -1,5 +1,12 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { ARTIFACT_CAPABILITY_CHANNEL } from "../../src/runtime/orchestrator-artifacts.ts";
 import {
 	loadOrchestratorGlobalConfig,
 	saveOrchestratorGlobalDefault,
@@ -23,11 +30,28 @@ import {
 	join,
 } from "../support/index.ts";
 
+function createEvents() {
+	const listeners = new Map<string, Set<(payload: unknown) => void>>();
+	return {
+		on(channel: string, listener: (payload: unknown) => void) {
+			const channelListeners = listeners.get(channel) ?? new Set();
+			channelListeners.add(listener);
+			listeners.set(channel, channelListeners);
+			return () => channelListeners.delete(listener);
+		},
+		emit(channel: string, payload: unknown) {
+			for (const listener of listeners.get(channel) ?? []) listener(payload);
+		},
+	};
+}
+
 function createRuntime(
 	activeTools: string[],
 	session = SessionManager.inMemory(createTestDir()),
 ) {
 	let currentTools = [...activeTools];
+	const events = createEvents();
+	const cwd = createTestDir();
 	const pi: OrchestratorRuntimeAPI = {
 		appendEntry(customType: string, data: unknown) {
 			assert.equal(customType, "pi-subagents:orchestrator");
@@ -39,6 +63,7 @@ function createRuntime(
 		setActiveTools(toolNames: string[]) {
 			currentTools = [...toolNames];
 		},
+		events,
 	};
 	const ctx: OrchestratorContext = {
 		hasPendingMessages: () => false,
@@ -46,7 +71,14 @@ function createRuntime(
 		sessionManager: session,
 		ui: { notify() {} },
 	};
-	return { pi, session, ctx, getActiveTools: () => [...currentTools] };
+	return {
+		pi,
+		session,
+		ctx,
+		cwd,
+		events,
+		getActiveTools: () => [...currentTools],
+	};
 }
 
 describe("orchestrator runtime persistence", () => {
@@ -111,6 +143,7 @@ describe("orchestrator runtime persistence", () => {
 
 		assert.equal(controller.getSnapshot(runtime.ctx).currentMode, true);
 		assert.deepEqual(runtime.getActiveTools(), [
+			"read",
 			"subagent",
 			"subagent_kill",
 			"subagent_resume",
@@ -176,7 +209,7 @@ describe("orchestrator runtime persistence", () => {
 
 		assert.equal(controller.getSnapshot(runtime.ctx).currentMode, false);
 		assert.equal(controller.setMode(true, runtime.ctx).ok, true);
-		assert.deepEqual(runtime.getActiveTools(), ["subagent"]);
+		assert.deepEqual(runtime.getActiveTools(), ["read", "subagent"]);
 		assert.equal(controller.setMode(false, runtime.ctx).ok, true);
 		assert.deepEqual(runtime.getActiveTools(), ["read", "bash", "subagent"]);
 	});
@@ -227,7 +260,7 @@ describe("orchestrator runtime persistence", () => {
 			"read",
 		]);
 		assert.equal(controller.setMode(true, runtime.ctx).ok, true);
-		assert.deepEqual(runtime.getActiveTools(), []);
+		assert.deepEqual(runtime.getActiveTools(), ["read"]);
 		assert.equal(controller.setMode(false, runtime.ctx).ok, true);
 		assert.deepEqual(runtime.getActiveTools(), ["read"]);
 	});
@@ -249,11 +282,11 @@ describe("orchestrator runtime persistence", () => {
 		runtime.session.branch(enabledEntry);
 		controller.handleSessionTree(runtime.ctx);
 		assert.equal(controller.getSnapshot(runtime.ctx).currentMode, true);
-		assert.deepEqual(runtime.getActiveTools(), ["subagent"]);
+		assert.deepEqual(runtime.getActiveTools(), ["read", "subagent"]);
 
 		controller.handleSessionStart(runtime.ctx);
 		assert.equal(controller.getSnapshot(runtime.ctx).currentMode, true);
-		assert.deepEqual(runtime.getActiveTools(), ["subagent"]);
+		assert.deepEqual(runtime.getActiveTools(), ["read", "subagent"]);
 	});
 
 	it("blocks mode changes for busy parents and all orchestration changes in children", () => {
@@ -304,9 +337,189 @@ describe("orchestrator runtime persistence", () => {
 			event.systemPromptOptions.appendSystemPrompt ?? "",
 			/^keep this\n\nYou are in delegation-only orchestrator mode/,
 		);
-		assert.equal(controller.handleToolCall({ toolName: "bash" })?.block, true);
 		assert.equal(
-			controller.handleToolCall({ toolName: "subagent" }),
+			controller.handleToolCall(
+				{ toolName: "bash", input: { command: "true" } },
+				{ cwd: runtime.cwd },
+			)?.block,
+			true,
+		);
+		assert.equal(
+			controller.handleToolCall(
+				{ toolName: "subagent", input: {} },
+				{ cwd: runtime.cwd },
+			),
+			undefined,
+		);
+	});
+
+	it("gates artifact operations by baseline and live capability", () => {
+		const runtime = createRuntime([
+			"read",
+			"write",
+			"edit",
+			"bash",
+			"subagent",
+		]);
+		const controller = createOrchestratorController(runtime.pi, {
+			agentDir: createTestDir(),
+			environment: { PI_ORCHESTRATOR_MODE: "1" },
+		});
+		controller.handleSessionStart(runtime.ctx);
+		assert.deepEqual(runtime.getActiveTools(), ["read", "subagent"]);
+		const readEvent = {
+			toolName: "read",
+			input: {
+				path: ".harness/plans/2026-10-12-lean-instruction-architecture.md",
+			},
+		};
+		assert.equal(
+			controller.handleToolCall(readEvent, { cwd: runtime.cwd }),
+			undefined,
+		);
+		const writeEvent = {
+			toolName: "write",
+			input: {
+				path: ".harness/plans/2026-10-12-lean-instruction-architecture.md",
+				content: "content",
+			},
+		};
+		assert.equal(
+			controller.handleToolCall(writeEvent, { cwd: runtime.cwd })?.block,
+			true,
+		);
+
+		runtime.events.emit(ARTIFACT_CAPABILITY_CHANNEL, {
+			version: 1,
+			mutations: true,
+		});
+		controller.beforeAgentStart({ systemPromptOptions: { cwd: runtime.cwd } });
+		assert.deepEqual(runtime.getActiveTools(), [
+			"read",
+			"write",
+			"edit",
+			"subagent",
+		]);
+		assert.equal(
+			controller.handleToolCall(writeEvent, { cwd: runtime.cwd }),
+			undefined,
+		);
+		runtime.events.emit(ARTIFACT_CAPABILITY_CHANNEL, {
+			version: 2,
+			mutations: true,
+		});
+		controller.beforeAgentStart({ systemPromptOptions: { cwd: runtime.cwd } });
+		assert.deepEqual(runtime.getActiveTools(), ["read", "subagent"]);
+		assert.equal(
+			controller.handleToolCall(writeEvent, { cwd: runtime.cwd })?.block,
+			true,
+		);
+
+		assert.equal(controller.setMode(false, runtime.ctx).ok, true);
+		assert.deepEqual(runtime.getActiveTools(), [
+			"read",
+			"write",
+			"edit",
+			"bash",
+			"subagent",
+		]);
+	});
+
+	it("restores normal tools when capability is revoked immediately before disable", () => {
+		const runtime = createRuntime([
+			"read",
+			"write",
+			"edit",
+			"bash",
+			"subagent",
+		]);
+		const controller = createOrchestratorController(runtime.pi, {
+			agentDir: createTestDir(),
+			environment: { PI_ORCHESTRATOR_MODE: "1" },
+		});
+		controller.handleSessionStart(runtime.ctx);
+		runtime.events.emit(ARTIFACT_CAPABILITY_CHANNEL, {
+			version: 1,
+			mutations: true,
+		});
+		controller.beforeAgentStart({ systemPromptOptions: { cwd: runtime.cwd } });
+		assert.deepEqual(runtime.getActiveTools(), [
+			"read",
+			"write",
+			"edit",
+			"subagent",
+		]);
+
+		runtime.events.emit(ARTIFACT_CAPABILITY_CHANNEL, {
+			version: 2,
+			mutations: true,
+		});
+		assert.equal(controller.setMode(false, runtime.ctx).ok, true);
+		assert.deepEqual(runtime.getActiveTools(), [
+			"read",
+			"write",
+			"edit",
+			"bash",
+			"subagent",
+		]);
+	});
+
+	it("uses each tool call's live cwd for symlink and ordinary path checks", () => {
+		const runtime = createRuntime(["read", "subagent"]);
+		const controller = createOrchestratorController(runtime.pi, {
+			agentDir: createTestDir(),
+			environment: { PI_ORCHESTRATOR_MODE: "1" },
+		});
+		controller.handleSessionStart(runtime.ctx);
+		const symlinkCwd = createTestDir();
+		const ordinaryCwd = createTestDir();
+		const artifactPath =
+			".harness/plans/2026-10-12-lean-instruction-architecture.md";
+		mkdirSync(join(symlinkCwd, ".harness"));
+		mkdirSync(join(symlinkCwd, "target"));
+		symlinkSync(
+			join(symlinkCwd, "target"),
+			join(symlinkCwd, ".harness", "plans"),
+			"dir",
+		);
+		mkdirSync(join(ordinaryCwd, ".harness", "plans"), { recursive: true });
+		const event = { toolName: "read", input: { path: artifactPath } };
+		assert.equal(
+			controller.handleToolCall(event, { cwd: symlinkCwd })?.block,
+			true,
+		);
+		assert.equal(
+			controller.handleToolCall(event, { cwd: ordinaryCwd }),
+			undefined,
+		);
+	});
+
+	it("keeps child sessions unrestricted and never grants unavailable startup tools", () => {
+		const parent = createRuntime(["subagent"]);
+		const parentController = createOrchestratorController(parent.pi, {
+			agentDir: createTestDir(),
+			environment: { PI_ORCHESTRATOR_MODE: "1" },
+		});
+		parentController.handleSessionStart(parent.ctx);
+		const readEvent = {
+			toolName: "read",
+			input: {
+				path: ".harness/plans/2026-10-12-lean-instruction-architecture.md",
+			},
+		};
+		assert.equal(
+			parentController.handleToolCall(readEvent, { cwd: parent.cwd })?.block,
+			true,
+		);
+
+		const child = createRuntime(["subagent"]);
+		const childController = createOrchestratorController(child.pi, {
+			agentDir: createTestDir(),
+			environment: { PI_ORCHESTRATOR_MODE: "1", PI_SUBAGENT_AGENT: "worker" },
+		});
+		childController.handleSessionStart(child.ctx);
+		assert.equal(
+			childController.handleToolCall(readEvent, { cwd: child.cwd }),
 			undefined,
 		);
 	});

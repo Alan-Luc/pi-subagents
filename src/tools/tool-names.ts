@@ -11,6 +11,7 @@ export const SUBAGENT_RESUME_TOOL_NAME = "subagent_resume";
 export const SUBAGENT_KILL_TOOL_NAME = "subagent_kill";
 export const SET_TAB_TITLE_TOOL_NAME = "set_tab_title";
 export const WORK_LOG_TOOL_NAME = "work_log";
+export const ASK_USER_QUESTION_TOOL_NAME = "ask_user_question";
 
 // Child-side protocol tools provided by the bundled subagent extension:
 export const CALLER_PING_TOOL_NAME = "caller_ping";
@@ -20,7 +21,10 @@ export const SUBAGENT_DONE_TOOL_NAME = "subagent_done";
  * Tools that LAUNCH a subagent run. Used by the mixed-batch classifier to
  * tell launches apart from siblings.
  */
-export const SUBAGENT_LAUNCH_TOOL_NAMES: ReadonlySet<string> = new Set([SUBAGENT_TOOL_NAME, SUBAGENT_RESUME_TOOL_NAME]);
+export const SUBAGENT_LAUNCH_TOOL_NAMES: ReadonlySet<string> = new Set([
+	SUBAGENT_TOOL_NAME,
+	SUBAGENT_RESUME_TOOL_NAME,
+]);
 
 /**
  * Tools the parent uses to manage subagents. Gated by the spawning policy in
@@ -45,6 +49,13 @@ export const PI_SUBAGENTS_INTERNAL_TOOL_NAMES: ReadonlySet<string> = new Set([
 	SET_TAB_TITLE_TOOL_NAME,
 ]);
 
+/** Existing Pi file tools that may be artifact-gated in orchestrator mode. */
+export const ORCHESTRATOR_ARTIFACT_TOOL_NAMES: ReadonlySet<string> = new Set([
+	"read",
+	"write",
+	"edit",
+]);
+
 /**
  * Parent-side tools allowed when PI_ORCHESTRATOR_MODE=1 turns the parent
  * into a delegation-only orchestrator.
@@ -55,6 +66,11 @@ export const ORCHESTRATOR_ALLOWED_TOOL_NAMES: ReadonlySet<string> = new Set([
 	SUBAGENT_RESUME_TOOL_NAME,
 	SET_TAB_TITLE_TOOL_NAME,
 	WORK_LOG_TOOL_NAME,
+	ASK_USER_QUESTION_TOOL_NAME,
+	"bg_run",
+	"bg_status",
+	"bg_logs",
+	"bg_kill",
 	"TaskCreate",
 	"TaskList",
 	"TaskGet",

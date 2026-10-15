@@ -40,6 +40,8 @@ export function sameOrchestratorTools(
 }
 
 /** Restrict a saved baseline to tools available in the new runtime. */
+const NO_ADDITIONAL_ORCHESTRATOR_TOOLS: ReadonlySet<string> = new Set();
+
 function intersectOrchestratorTools(
 	preferred: readonly string[],
 	available: readonly string[],
@@ -49,9 +51,14 @@ function intersectOrchestratorTools(
 }
 
 /** Keep only tools allowed for orchestration. */
-export function filterOrchestratorTools(toolNames: readonly string[]): string[] {
-	return normalizeOrchestratorTools(toolNames).filter((name) =>
-		ORCHESTRATOR_ALLOWED_TOOL_NAMES.has(name),
+export function filterOrchestratorTools(
+	toolNames: readonly string[],
+	additionalAllowedTools: ReadonlySet<string> = NO_ADDITIONAL_ORCHESTRATOR_TOOLS,
+): string[] {
+	return normalizeOrchestratorTools(toolNames).filter(
+		(name) =>
+			ORCHESTRATOR_ALLOWED_TOOL_NAMES.has(name) ||
+			additionalAllowedTools.has(name),
 	);
 }
 
@@ -59,10 +66,14 @@ export function filterOrchestratorTools(toolNames: readonly string[]): string[] 
 export function currentToolsAreControllerRestricted(
 	previousMode: boolean,
 	currentTools: readonly string[],
+	additionalAllowedTools: ReadonlySet<string> = NO_ADDITIONAL_ORCHESTRATOR_TOOLS,
 ): boolean {
 	return (
 		previousMode &&
-		currentTools.every((name) => filterOrchestratorTools([name]).length > 0)
+		currentTools.every(
+			(name) =>
+				filterOrchestratorTools([name], additionalAllowedTools).length > 0,
+		)
 	);
 }
 
@@ -73,6 +84,7 @@ export function chooseOrchestratorBaseline(
 	currentTools: readonly string[],
 	previousNormalTools: readonly string[],
 	isFreshRuntime: boolean,
+	additionalAllowedTools: ReadonlySet<string> = NO_ADDITIONAL_ORCHESTRATOR_TOOLS,
 ): string[] {
 	if (persistedTools && sameOrchestratorTools(currentTools, persistedTools))
 		return [...persistedTools];
@@ -80,8 +92,16 @@ export function chooseOrchestratorBaseline(
 	// persisted baseline, but never restore tools absent from this startup.
 	if (isFreshRuntime && persistedTools)
 		return intersectOrchestratorTools(persistedTools, currentTools);
-	if (currentToolsAreControllerRestricted(previousMode, currentTools)) {
-		return normalizeOrchestratorTools(persistedTools ?? previousNormalTools ?? currentTools);
+	if (
+		currentToolsAreControllerRestricted(
+			previousMode,
+			currentTools,
+			additionalAllowedTools,
+		)
+	) {
+		return normalizeOrchestratorTools(
+			persistedTools ?? previousNormalTools ?? currentTools,
+		);
 	}
 	return [...currentTools];
 }
@@ -91,15 +111,23 @@ export function deriveNormalToolsOnDisable(
 	currentTools: readonly string[],
 	normalActiveTools: readonly string[],
 	modeActiveTools: readonly string[],
+	additionalAllowedTools: ReadonlySet<string> = NO_ADDITIONAL_ORCHESTRATOR_TOOLS,
 ): string[] {
 	const liveTools = normalizeOrchestratorTools(currentTools);
-	if (liveTools.some((name) => !ORCHESTRATOR_ALLOWED_TOOL_NAMES.has(name)))
+	if (
+		liveTools.some(
+			(name) =>
+				!ORCHESTRATOR_ALLOWED_TOOL_NAMES.has(name) &&
+				!additionalAllowedTools.has(name) &&
+				!modeActiveTools.includes(name),
+		)
+	)
 		return liveTools;
 
 	const expected =
 		modeActiveTools.length > 0
 			? modeActiveTools
-			: filterOrchestratorTools(normalActiveTools);
+			: filterOrchestratorTools(normalActiveTools, additionalAllowedTools);
 	const missingAllowed = new Set(
 		expected.filter((name) => !liveTools.includes(name)),
 	);

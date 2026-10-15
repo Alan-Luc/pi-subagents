@@ -15,7 +15,11 @@ import { filterOrchestratorTools } from "../../src/runtime/orchestrator-policy.t
 import { createOrchestratorController, type OrchestratorRuntimeAPI } from "../../src/runtime/orchestrator-controller.ts";
 import subagentsExtension from "../../src/subagents.ts";
 import { getSubagentToolLaunchArgs } from "../../src/tools/policy.ts";
-import { ORCHESTRATOR_ALLOWED_TOOL_NAMES, WORK_LOG_TOOL_NAME } from "../../src/tools/tool-names.ts";
+import {
+	ASK_USER_QUESTION_TOOL_NAME,
+	ORCHESTRATOR_ALLOWED_TOOL_NAMES,
+	WORK_LOG_TOOL_NAME,
+} from "../../src/tools/tool-names.ts";
 
 const ORCHESTRATOR_BASE_PROMPT = getOrchestratorPrompt();
 const { buildSystemPrompt } = (await import(
@@ -30,6 +34,11 @@ const { buildSystemPrompt } = (await import(
 };
 const TASK_TOOLS = ["TaskCreate", "TaskList", "TaskGet", "TaskUpdate"];
 const FORBIDDEN_TASK_TOOLS = ["TaskExecute", "TaskOutput", "TaskStop"];
+const BACKGROUND_TOOLS = ["bg_run", "bg_status", "bg_logs", "bg_kill"];
+const HOST_COORDINATION_TOOLS = [
+	ASK_USER_QUESTION_TOOL_NAME,
+	...BACKGROUND_TOOLS,
+];
 
 function createTempDir(prefix: string): string {
 	return mkdtempSync(join(tmpdir(), prefix));
@@ -55,6 +64,7 @@ function withEnvironment<T>(values: Record<string, string | undefined>, callback
 function createExtensionHarness(environment: Record<string, string | undefined>): {
 	root: string;
 	activeTools: () => string[];
+	setActiveTools: (tools: string[]) => void;
 	handlers: Map<string, (event: unknown, ctx: ExtensionContext) => unknown>;
 	context: ExtensionContext;
 } {
@@ -68,6 +78,7 @@ function createExtensionHarness(environment: Record<string, string | undefined>)
 	const session = SessionManager.inMemory(root);
 	let tools = ["read", "bash", "subagent", ...TASK_TOOLS];
 	const handlers = new Map<string, (event: unknown, ctx: ExtensionContext) => unknown>();
+	const events = { on: () => () => undefined, emit: () => undefined };
 	const api = {
 		on(event: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) {
 			handlers.set(event, handler);
@@ -89,6 +100,7 @@ function createExtensionHarness(environment: Record<string, string | undefined>)
 		registerShortcut() {},
 		registerMessageRenderer() {},
 		sendMessage() {},
+		events,
 	};
 	const context = {
 		cwd: root,
@@ -110,7 +122,15 @@ function createExtensionHarness(environment: Record<string, string | undefined>)
 		},
 		() => subagentsExtension(api as unknown as ExtensionAPI),
 	);
-	return { root, activeTools: () => [...tools], handlers, context };
+	return {
+		root,
+		activeTools: () => [...tools],
+		setActiveTools: (next) => {
+			tools = [...next];
+		},
+		handlers,
+		context,
+	};
 }
 
 
@@ -118,8 +138,9 @@ describe("orchestrator prompt", () => {
 	it("adds only the delegation-specific mode delta", () => {
 		for (const phrase of [
 			/You are in delegation-only orchestrator mode/,
-			/Do not inspect files, run commands, edit code, or perform implementation work yourself/,
+			/Do not inspect source files, run commands, edit code, or perform implementation work yourself/,
 			/Delegate substantive work to sub-agents, then synthesize their returned results/,
+			/derive the ready set from approved dependencies and exact path ownership/,
 			/under the existing system, AGENTS\.md, and Tech Lead instructions/,
 			/Task tools manage this session's checklist/,
 			/work_log may append required records/,
@@ -156,6 +177,18 @@ describe("orchestrator prompt", () => {
 		assert.match(ORCHESTRATOR_BASE_PROMPT, /work_log may append required records/);
 	});
 
+	it("keeps host coordination tools available", () => {
+		assert.ok(
+			HOST_COORDINATION_TOOLS.every((name) =>
+				ORCHESTRATOR_ALLOWED_TOOL_NAMES.has(name),
+			),
+		);
+		assert.deepEqual(
+			filterOrchestratorTools(["bash", ...HOST_COORDINATION_TOOLS]),
+			HOST_COORDINATION_TOOLS,
+		);
+	});
+
 	it("forwards all self-managed Task tools to workers", () => {
 		for (const tool of TASK_TOOLS) {
 			assert.deepEqual(getSubagentToolLaunchArgs(tool, new Set(), false), [
@@ -165,9 +198,17 @@ describe("orchestrator prompt", () => {
 		}
 	});
 
-	it("keeps session task tools in Pi's rendered prompt", () => {
-		let tools = ["read", "bash", "subagent", WORK_LOG_TOOL_NAME, ...TASK_TOOLS];
+	it("keeps session coordination tools in Pi's rendered prompt", () => {
+		let tools = [
+			"read",
+			"bash",
+			"subagent",
+			WORK_LOG_TOOL_NAME,
+			...HOST_COORDINATION_TOOLS,
+			...TASK_TOOLS,
+		];
 		const session = SessionManager.inMemory(createTempDir("pi-subagents-controller-"));
+		const events = { on: () => () => undefined, emit: () => undefined };
 		const api: OrchestratorRuntimeAPI = {
 			appendEntry(type, data) {
 				session.appendCustomEntry(type, data);
@@ -176,6 +217,7 @@ describe("orchestrator prompt", () => {
 			setActiveTools: (next) => {
 				tools = [...next];
 			},
+			events,
 		};
 		const notices: Array<{ message: string; type?: string }> = [];
 		const context = {
@@ -193,7 +235,13 @@ describe("orchestrator prompt", () => {
 			agentDir: createTempDir("pi-subagents-agent-"),
 		});
 		controller.handleSessionStart(context);
-		assert.deepEqual(tools, ["subagent", WORK_LOG_TOOL_NAME, ...TASK_TOOLS]);
+		assert.deepEqual(tools, [
+			"read",
+			"subagent",
+			WORK_LOG_TOOL_NAME,
+			...HOST_COORDINATION_TOOLS,
+			...TASK_TOOLS,
+		]);
 		assert.deepEqual(notices, []);
 		const event = {
 			systemPromptOptions: {
@@ -228,19 +276,39 @@ describe("orchestrator prompt", () => {
 			assert.ok(index > previousIndex, `${sentinel} must preserve append order`);
 			previousIndex = index;
 		}
-		assert.equal(controller.handleToolCall({ toolName: "TaskGet" }), undefined);
-		assert.equal(controller.handleToolCall({ toolName: WORK_LOG_TOOL_NAME }), undefined);
-		assert.equal(controller.handleToolCall({ toolName: "subagent" }), undefined);
+		assert.equal(controller.handleToolCall({ toolName: "TaskGet", input: {} }, { cwd: "/tmp" }), undefined);
+		assert.equal(controller.handleToolCall({ toolName: WORK_LOG_TOOL_NAME, input: {} }, { cwd: "/tmp" }), undefined);
+		for (const toolName of HOST_COORDINATION_TOOLS) {
+			assert.equal(
+				controller.handleToolCall(
+					{ toolName, input: {} },
+					{ cwd: "/tmp" },
+				),
+				undefined,
+			);
+		}
+		assert.equal(controller.handleToolCall({ toolName: "subagent", input: {} }, { cwd: "/tmp" }), undefined);
+		assert.equal(controller.setMode(false, context).ok, true);
+		assert.deepEqual(tools, [
+			"read",
+			"bash",
+			"subagent",
+			WORK_LOG_TOOL_NAME,
+			...HOST_COORDINATION_TOOLS,
+			...TASK_TOOLS,
+		]);
 	});
 
 	it("adds exactly one orchestrator delta when Pi has no prior append", () => {
 		const session = SessionManager.inMemory(createTempDir("pi-subagents-controller-"));
+		const events = { on: () => () => undefined, emit: () => undefined };
 		const api: OrchestratorRuntimeAPI = {
 			appendEntry(type, data) {
 				session.appendCustomEntry(type, data);
 			},
 			getActiveTools: () => ["subagent", ...TASK_TOOLS],
 			setActiveTools() {},
+			events,
 		};
 		const controller = createOrchestratorController(api, {
 			environment: { PI_ORCHESTRATOR_MODE: "1" },
@@ -280,4 +348,33 @@ describe("orchestrator prompt", () => {
 		}
 	});
 
+	it("removes and restores the ambient roster with subagent tool availability", () => {
+		const harness = createExtensionHarness({});
+		try {
+			harness.handlers.get("session_start")?.({ reason: "startup" }, harness.context);
+			const beforeAgentStart = harness.handlers.get("before_agent_start");
+			assert.ok(beforeAgentStart);
+			const event = { systemPromptOptions: { cwd: harness.root } };
+			const startup = beforeAgentStart(event, harness.context) as {
+				message: { content: string; details: { supersedes?: boolean } };
+			};
+			assert.match(startup.message.content, /<subagent-roster>/);
+
+			harness.setActiveTools(harness.activeTools().filter((name) => name !== "subagent"));
+			const suppressed = beforeAgentStart(event, harness.context) as {
+				message: { content: string; details: { supersedes?: boolean } };
+			};
+			assert.equal(suppressed.message.content, "");
+			assert.equal(suppressed.message.details.supersedes, true);
+
+			harness.setActiveTools([...harness.activeTools(), "subagent"]);
+			const restored = beforeAgentStart(event, harness.context) as {
+				message: { content: string; details: { supersedes?: boolean } };
+			};
+			assert.match(restored.message.content, /<subagent-roster>/);
+			assert.equal(restored.message.details.supersedes, true);
+		} finally {
+			rmSync(harness.root, { recursive: true, force: true });
+		}
+	});
 });

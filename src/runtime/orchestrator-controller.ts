@@ -11,6 +11,7 @@ import {
 	ORCHESTRATOR_SESSION_CUSTOM_TYPE,
 	readOrchestratorSessionState,
 } from "../session/orchestrator-state.ts";
+import { ORCHESTRATOR_ARTIFACT_TOOL_NAMES } from "../tools/tool-names.ts";
 import {
 	loadOrchestratorGlobalConfig,
 	type OrchestratorEffectiveDefault,
@@ -19,10 +20,13 @@ import {
 	saveOrchestratorGlobalDefault,
 } from "./orchestrator-config.ts";
 import {
+	createOrchestratorArtifactGate,
+	type OrchestratorArtifactGate,
+} from "./orchestrator-artifacts.ts";
+import {
 	chooseOrchestratorBaseline,
 	currentToolsAreControllerRestricted,
 	deriveNormalToolsOnDisable,
-	filterOrchestratorTools,
 	isSubagentChildEnvironment,
 	normalizeOrchestratorTools,
 	sameOrchestratorTools,
@@ -53,7 +57,8 @@ export interface OrchestratorContext {
 export type OrchestratorRuntimeAPI = Pick<
 	ExtensionAPI,
 	"appendEntry" | "getActiveTools" | "setActiveTools"
->;
+> &
+	Partial<Pick<ExtensionAPI, "events">>;
 
 /** Current mode, tool, guard, and persistence state exposed to the UI. */
 export interface OrchestratorSnapshot {
@@ -112,7 +117,8 @@ export interface OrchestratorController {
 		event: Pick<BeforeAgentStartEvent, "systemPromptOptions">,
 	): undefined;
 	handleToolCall(
-		event: Pick<ToolCallEvent, "toolName">,
+		event: Pick<ToolCallEvent, "toolName" | "input">,
+		ctx: Pick<ExtensionContext, "cwd">,
 	): ToolCallEventResult | undefined;
 }
 
@@ -182,9 +188,8 @@ export function createOrchestratorController(
 		api.setActiveTools(normalizeOrchestratorTools(toolNames));
 	}
 
-	function filterAvailableOrchestratorTools(toolNames: readonly string[]): string[] {
-		return filterOrchestratorTools(toolNames);
-	}
+	const artifactGate: OrchestratorArtifactGate =
+		createOrchestratorArtifactGate(api.events);
 
 	function persistSessionState(
 		ctx: OrchestratorContext,
@@ -302,12 +307,16 @@ export function createOrchestratorController(
 		const previousMode = currentMode;
 		const currentTools = getCurrentTools();
 		const persisted = readBranchState(ctx);
+		const policyBaseline =
+			persisted?.activeTools ??
+			(normalActiveTools.length > 0 ? normalActiveTools : currentTools);
 		const baseline = chooseOrchestratorBaseline(
 			persisted?.activeTools,
 			previousMode,
 			currentTools,
 			normalActiveTools,
 			!initialized,
+			artifactGate.allowedToolNames(policyBaseline),
 		);
 		const enabled = persisted?.enabled ?? effectiveDefault.value;
 		const shouldPersist =
@@ -327,10 +336,16 @@ export function createOrchestratorController(
 
 		normalActiveTools = normalizeOrchestratorTools(baseline);
 		currentMode = enabled;
+		const allowedArtifactTools =
+			artifactGate.allowedToolNames(normalActiveTools);
 		const desiredTools = enabled
-			? currentToolsAreControllerRestricted(previousMode, currentTools)
-				? filterAvailableOrchestratorTools(baseline)
-				: filterAvailableOrchestratorTools(currentTools)
+			? currentToolsAreControllerRestricted(
+					previousMode,
+					currentTools,
+					allowedArtifactTools,
+				)
+				? artifactGate.filterToolNames(baseline, normalActiveTools)
+				: artifactGate.filterToolNames(currentTools, normalActiveTools)
 			: baseline;
 		setCurrentTools(desiredTools);
 		modeActiveTools = enabled ? [...desiredTools] : [];
@@ -345,7 +360,12 @@ export function createOrchestratorController(
 		currentMode = previousMode;
 		normalActiveTools = normalizeOrchestratorTools(previousNormalTools);
 		modeActiveTools = previousMode
-			? [...filterAvailableOrchestratorTools(previousActiveTools)]
+			? [
+					...artifactGate.filterToolNames(
+						previousActiveTools,
+						previousNormalTools,
+					),
+				]
 			: [];
 		try {
 			setCurrentTools(previousActiveTools);
@@ -389,6 +409,7 @@ export function createOrchestratorController(
 						previousActiveTools,
 						normalActiveTools,
 						modeActiveTools,
+						artifactGate.allowedToolNames(normalActiveTools),
 					);
 			const operationContext = nextContext ?? context;
 			if (!persistSessionState(operationContext, enabled, nextNormalTools)) {
@@ -403,7 +424,7 @@ export function createOrchestratorController(
 
 			try {
 				const desiredTools = enabled
-					? filterAvailableOrchestratorTools(previousActiveTools)
+					? artifactGate.filterToolNames(previousActiveTools, nextNormalTools)
 					: nextNormalTools;
 				setCurrentTools(desiredTools);
 				currentMode = enabled;
@@ -523,13 +544,22 @@ export function createOrchestratorController(
 			}
 
 			const currentTools = getCurrentTools();
+			const disallowedTools = currentTools.filter(
+				(name) =>
+					!artifactGate.filterToolNames([name], normalActiveTools).length,
+			);
 			if (
-				currentTools.some((name) => !filterAvailableOrchestratorTools([name]).length)
+				disallowedTools.some(
+					(name) => !ORCHESTRATOR_ARTIFACT_TOOL_NAMES.has(name),
+				)
 			) {
 				normalActiveTools = [...currentTools];
 				baselineDirty = true;
 			}
-			const allowedTools = filterAvailableOrchestratorTools(currentTools);
+			const allowedTools = artifactGate.refreshToolNames(
+				normalActiveTools,
+				currentTools,
+			);
 			if (!sameOrchestratorTools(currentTools, allowedTools))
 				setCurrentTools(allowedTools);
 			modeActiveTools = [...allowedTools];
@@ -542,11 +572,17 @@ export function createOrchestratorController(
 			}
 			return undefined;
 		},
-		handleToolCall(event) {
+		handleToolCall(event, ctx) {
+			if (childSession || !currentMode) return undefined;
+			const artifactResult = artifactGate?.handleToolCall(
+				event,
+				ctx,
+				normalActiveTools,
+			);
+			if (artifactResult) return artifactResult;
 			if (
-				childSession ||
-				!currentMode ||
-				filterAvailableOrchestratorTools([event.toolName]).length > 0
+				artifactGate.filterToolNames([event.toolName], normalActiveTools)
+					.length > 0
 			)
 				return undefined;
 			return {

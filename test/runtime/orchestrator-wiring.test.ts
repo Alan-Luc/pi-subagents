@@ -45,6 +45,19 @@ function createExtensionHarness(
 	const session = SessionManager.inMemory(root);
 	let tools = ["read", "bash", "subagent", "subagent_kill", "subagent_resume"];
 	const handlers = new Map<string, CapturedHandler>();
+	const eventListeners = new Map<string, Set<(payload: unknown) => void>>();
+	const events = {
+		on(channel: string, listener: (payload: unknown) => void) {
+			const listeners = eventListeners.get(channel) ?? new Set();
+			listeners.add(listener);
+			eventListeners.set(channel, listeners);
+			return () => listeners.delete(listener);
+		},
+		emit(channel: string, payload: unknown) {
+			for (const listener of eventListeners.get(channel) ?? [])
+				listener(payload);
+		},
+	};
 	const api = {
 		on(event: string, handler: CapturedHandler) {
 			handlers.set(event, handler);
@@ -58,6 +71,7 @@ function createExtensionHarness(
 		setActiveTools(next: string[]) {
 			tools = [...next];
 		},
+		events,
 		getAllTools() {
 			return tools.map((name) => ({ name }));
 		},
@@ -107,6 +121,7 @@ describe("orchestrator extension wiring", () => {
 			harness.context,
 		);
 		assert.deepEqual(harness.activeTools(), [
+			"read",
 			"subagent",
 			"subagent_kill",
 			"subagent_resume",
