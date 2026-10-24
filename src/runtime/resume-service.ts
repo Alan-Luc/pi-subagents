@@ -233,9 +233,10 @@ export function mergeResumeInvocationMetadata(
 	const lockedModel = lockedModelRef
 		? resolveAvailableModelRef(splitModelRef(lockedModelRef).model, undefined, false, modelRegistry, lockedModelRef).model
 		: undefined;
-	const latestModel = latestModelRef
-		? resolveAvailableModelRef(splitModelRef(latestModelRef).model, undefined, false, modelRegistry, lockedModelRef).model
-		: undefined;
+	// Later entries are child-writable: compare by name so a forged uninstalled provider is ignored, not fatal.
+	const lockedProvider = lockedModel?.includes("/") ? lockedModel.slice(0, lockedModel.indexOf("/")) : undefined;
+	const latestId = latestModelRef ? splitModelRef(latestModelRef).model : undefined;
+	const latestModel = latestId && lockedProvider && !latestId.includes("/") ? `${lockedProvider}/${latestId}` : latestId;
 	const sameModel = !lockedModel || !latestModel || lockedModel === latestModel;
 	const latestThinking = laterMetadata.thinking ?? (latestModelRef ? splitModelRef(latestModelRef).thinking : undefined);
 	const lockedThinking = launchMetadata.thinking ?? (lockedModelRef ? splitModelRef(lockedModelRef).thinking : undefined);

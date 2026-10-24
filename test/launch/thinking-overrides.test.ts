@@ -13,6 +13,7 @@ import { enforceAgentFrontmatter } from "../../src/launch/policy.ts";
 import { buildChildLaunchPlan } from "../../src/launch/child-launch-plan.ts";
 import { mergeResumeInvocationMetadata, resolveResumeLaunchMetadataForInvocation } from "../../src/runtime/resume-service.ts";
 import { getPersistedSessionParityArgs } from "../../src/launch/prep.ts";
+import type { PersistedSubagentLaunchMetadata } from "../../src/session/session-files.ts";
 import { registerSubagentResumeTool } from "../../src/tools/resume-tool.ts";
 
 const params = {
@@ -21,6 +22,29 @@ const params = {
 	title: "Run requested check",
 	agent: "test-automation-engineer",
 };
+
+function lockedLaunch(overrides: Partial<PersistedSubagentLaunchMetadata> = {}): PersistedSubagentLaunchMetadata {
+	return {
+		version: 1,
+		timestamp: "2026-10-23T00:00:00.000Z",
+		name: "reviewer",
+		mode: "background",
+		sessionMode: "lineage-only",
+		parentClosePolicy: "terminate",
+		async: true,
+		model: "anthropic/claude-sonnet-5",
+		modelRef: "anthropic/claude-sonnet-5:high",
+		allowModelOverride: false,
+		thinkingOverrides: ["off", "low", "medium", "high"],
+		denyTools: [],
+		noContextFiles: false,
+		noSession: false,
+		agentConfigDir: "/tmp",
+		cwd: "/tmp",
+		boundarySystemPrompt: true,
+		...overrides,
+	};
+}
 
 describe("thinking-only task effort overrides", () => {
 	it("advertises the approved effort boundary in the actual resume tool definition", () => {
@@ -88,25 +112,7 @@ describe("thinking-only task effort overrides", () => {
 	});
 
 	it("allows only explicitly permitted resume effort on the persisted model", () => {
-		const base = {
-			version: 1 as const,
-			timestamp: "2026-10-23T00:00:00.000Z",
-			name: "test-automation-engineer",
-			mode: "background" as const,
-			sessionMode: "lineage-only" as const,
-			parentClosePolicy: "terminate" as const,
-			async: true,
-			model: "anthropic/claude-sonnet-5",
-			modelRef: "anthropic/claude-sonnet-5:high",
-			allowModelOverride: false,
-			thinkingOverrides: ["off", "low", "medium", "high"],
-			denyTools: [],
-			noContextFiles: false,
-			noSession: false,
-			agentConfigDir: "/tmp",
-			cwd: "/tmp",
-			boundarySystemPrompt: true,
-		};
+		const base = lockedLaunch();
 		const changed = resolveResumeLaunchMetadataForInvocationForTest(base, undefined, {
 			getAvailable: () => [{ provider: "anthropic", id: "claude-sonnet-5", thinkingLevelMap: { off: "none", low: "low", medium: "medium", high: "high" } }],
 		}, "off");
@@ -160,26 +166,7 @@ describe("thinking-only task effort overrides", () => {
 	});
 
 	it("anchors resumed opt-in and model identity to the original launch entry", () => {
-		const launch = {
-			version: 1 as const,
-			timestamp: "2026-10-23T00:00:00.000Z",
-			name: "test-automation-engineer",
-			mode: "background" as const,
-			sessionMode: "lineage-only" as const,
-			parentClosePolicy: "terminate" as const,
-			async: true,
-			model: "anthropic/claude-sonnet-5",
-			thinking: "high",
-			modelRef: "anthropic/claude-sonnet-5:high",
-			allowModelOverride: false,
-			thinkingOverrides: ["off", "low", "medium", "high"],
-			denyTools: [],
-			noContextFiles: false,
-			noSession: false,
-			agentConfigDir: "/tmp",
-			cwd: "/tmp",
-			boundarySystemPrompt: true,
-		};
+		const launch = lockedLaunch({ thinking: "high" });
 		const forged = mergeResumeInvocationMetadata(launch, {
 			...launch,
 			model: "other/model",
@@ -213,26 +200,7 @@ describe("thinking-only task effort overrides", () => {
 	});
 
 	it("rejects locked thinking unsupported by installed metadata on a no-override resume", () => {
-		const launch = {
-			version: 1 as const,
-			timestamp: "2026-10-23T00:00:00.000Z",
-			name: "reviewer",
-			mode: "background" as const,
-			sessionMode: "lineage-only" as const,
-			parentClosePolicy: "terminate" as const,
-			async: true,
-			model: "anthropic/claude-sonnet-5",
-			thinking: "high",
-			modelRef: "anthropic/claude-sonnet-5:high",
-			allowModelOverride: false,
-			thinkingOverrides: ["off", "low", "medium", "high"],
-			denyTools: [],
-			noContextFiles: false,
-			noSession: false,
-			agentConfigDir: "/tmp",
-			cwd: "/tmp",
-			boundarySystemPrompt: true,
-		};
+		const launch = lockedLaunch({ thinking: "high" });
 		const metadata = mergeResumeInvocationMetadata(launch, {
 			...launch,
 			thinking: "off",
@@ -247,26 +215,7 @@ describe("thinking-only task effort overrides", () => {
 	});
 
 	it("keeps an approved effort when a bare locked model becomes provider-qualified", async () => {
-		const launch = {
-			version: 1 as const,
-			timestamp: "2026-10-23T00:00:00.000Z",
-			name: "reviewer",
-			mode: "background" as const,
-			sessionMode: "lineage-only" as const,
-			parentClosePolicy: "terminate" as const,
-			async: true,
-			model: "claude-sonnet-5",
-			thinking: "high",
-			modelRef: "claude-sonnet-5:high",
-			allowModelOverride: false,
-			thinkingOverrides: ["low"],
-			denyTools: [],
-			noContextFiles: false,
-			noSession: false,
-			agentConfigDir: "/tmp",
-			cwd: "/tmp",
-			boundarySystemPrompt: true,
-		};
+		const launch = lockedLaunch({ model: "claude-sonnet-5", thinking: "high", modelRef: "claude-sonnet-5:high", thinkingOverrides: ["low"] });
 		const registry = {
 			getAvailable: () => [{ provider: "anthropic", id: "claude-sonnet-5", thinkingLevelMap: { low: "low", high: "high" } }],
 		};
@@ -278,7 +227,48 @@ describe("thinking-only task effort overrides", () => {
 		}, registry);
 		const resumed = resolveResumeLaunchMetadataForInvocation(metadata, undefined, undefined, registry);
 		assert.deepEqual(await getPersistedSessionParityArgs(resumed), ["--model", "anthropic/claude-sonnet-5:low", "--no-approve"]);
+	});
 
+	it("ignores a later entry naming an uninstalled provider instead of failing the locked resume", async () => {
+		const launch = lockedLaunch({ thinking: "high", thinkingOverrides: ["low"] });
+		const registry = {
+			getAvailable: () => [{ provider: "anthropic", id: "claude-sonnet-5", thinkingLevelMap: { low: "low", high: "high" } }],
+		};
+		const metadata = mergeResumeInvocationMetadata(launch, {
+			...launch,
+			model: "other/claude-sonnet-5",
+			thinking: "low",
+			modelRef: "other/claude-sonnet-5:low",
+		}, registry);
+		const resumed = resolveResumeLaunchMetadataForInvocation(metadata, undefined, undefined, registry);
+		assert.deepEqual(await getPersistedSessionParityArgs(resumed), ["--model", "anthropic/claude-sonnet-5:high", "--no-approve"]);
+	});
+
+	it("qualifies a bare later model toward the trusted provider when the id is installed twice", async () => {
+		const launch = lockedLaunch({ thinking: "high", thinkingOverrides: ["low"] });
+		const registry = {
+			getAvailable: () => [
+				{ provider: "other", id: "claude-sonnet-5", thinkingLevelMap: { low: "low", high: "high" } },
+				{ provider: "anthropic", id: "claude-sonnet-5", thinkingLevelMap: { low: "low", high: "high" } },
+			],
+		};
+		const metadata = mergeResumeInvocationMetadata(launch, { ...launch, model: "claude-sonnet-5", thinking: "low", modelRef: "claude-sonnet-5:low" }, registry);
+		const resumed = resolveResumeLaunchMetadataForInvocation(metadata, undefined, undefined, registry);
+		assert.deepEqual(await getPersistedSessionParityArgs(resumed), ["--model", "anthropic/claude-sonnet-5:low", "--no-approve"]);
+	});
+
+	it("rejects an ambiguous bare locked model instead of guessing its provider", () => {
+		const launch = lockedLaunch({ model: "claude-sonnet-5", thinking: "high", modelRef: "claude-sonnet-5:high", thinkingOverrides: ["low"] });
+		const registry = {
+			getAvailable: () => [
+				{ provider: "other", id: "claude-sonnet-5" },
+				{ provider: "anthropic", id: "claude-sonnet-5" },
+			],
+		};
+		assert.throws(
+			() => mergeResumeInvocationMetadata(launch, { ...launch, thinking: "low", modelRef: "claude-sonnet-5:low" }, registry),
+			/Ambiguous model override 'claude-sonnet-5'/,
+		);
 	});
 
 	for (const scenario of [
@@ -302,28 +292,9 @@ describe("thinking-only task effort overrides", () => {
 			launchThinking: "high", allowedThinking: ["low"], laterThinking: "low",
 			laterModelRef: undefined, expectedModelRef: "anthropic/claude-sonnet-5:low",
 		},
-	]) {
+	] satisfies Array<{ allowedThinking: PersistedSubagentLaunchMetadata["thinkingOverrides"] } & Record<string, unknown>>) {
 		it(scenario.description, async () => {
-			const launch = {
-				version: 1 as const,
-				timestamp: "2026-10-23T00:00:00.000Z",
-				name: "test-automation-engineer",
-				mode: "background" as const,
-				sessionMode: "lineage-only" as const,
-				parentClosePolicy: "terminate" as const,
-				async: true,
-				model: "anthropic/claude-sonnet-5",
-				thinking: scenario.launchThinking,
-				modelRef: `anthropic/claude-sonnet-5:${scenario.launchThinking}`,
-				allowModelOverride: false,
-				thinkingOverrides: scenario.allowedThinking,
-				denyTools: [],
-				noContextFiles: false,
-				noSession: false,
-				agentConfigDir: "/tmp",
-				cwd: "/tmp",
-				boundarySystemPrompt: true,
-			};
+			const launch = lockedLaunch({ thinking: scenario.launchThinking, modelRef: `anthropic/claude-sonnet-5:${scenario.launchThinking}`, thinkingOverrides: scenario.allowedThinking });
 			const registry = { getAvailable: () => [{ provider: "anthropic", id: "claude-sonnet-5", thinkingLevelMap: { off: "none", low: "low", high: "high" } }] };
 			const metadata = mergeResumeInvocationMetadata(launch, {
 				...launch,
@@ -358,25 +329,7 @@ describe("thinking-only task effort overrides", () => {
 	});
 
 	it("rejects forbidden or unsupported resume overrides rather than ignoring them", () => {
-		const base = {
-			version: 1 as const,
-			timestamp: "2026-10-23T00:00:00.000Z",
-			name: "reviewer",
-			mode: "background" as const,
-			sessionMode: "lineage-only" as const,
-			parentClosePolicy: "terminate" as const,
-			async: true,
-			model: "anthropic/claude-sonnet-5",
-			modelRef: "anthropic/claude-sonnet-5:high",
-			allowModelOverride: false,
-			thinkingOverrides: ["off", "low", "medium", "high"],
-			denyTools: [],
-			noContextFiles: false,
-			noSession: false,
-			agentConfigDir: "/tmp",
-			cwd: "/tmp",
-			boundarySystemPrompt: true,
-		};
+		const base = lockedLaunch();
 		assert.throws(() => resolveResumeLaunchMetadataForInvocationForTest(base, "other/model"), /Model override is not allowed/);
 		assert.throws(() => resolveResumeLaunchMetadataForInvocationForTest(base, undefined, {
 			getAvailable: () => [{ provider: "anthropic", id: "claude-sonnet-5", thinkingLevelMap: { off: null, high: "high" } }],
