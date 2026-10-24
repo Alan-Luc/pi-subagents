@@ -23,6 +23,7 @@ export interface AgentListEntry {
 	thinking?: string;
 	allowedModels?: string;
 	allowModelOverride?: boolean;
+	thinkingOverrides?: Array<"off" | "low" | "medium" | "high">;
 	spawning: true | string[] | false;
 	spawnDepth?: number;
 	spawnWidth?: number;
@@ -74,6 +75,7 @@ export function getAgentListEntries(
 			thinking: agent.thinking,
 			allowedModels: agent.allowedModels,
 			allowModelOverride: agent.allowModelOverride,
+			thinkingOverrides: agent.thinkingOverrides,
 			spawning: agent.spawning ?? false,
 			...(agent.spawnDepth !== undefined ? { spawnDepth: agent.spawnDepth } : {}),
 			...(agent.spawnWidth !== undefined ? { spawnWidth: agent.spawnWidth } : {}),
@@ -120,6 +122,10 @@ function getCompletion(entry: AgentListEntry): "exits_automatically" | "human_or
 	// subagent_kill) closes the pane. Background children must call
 	// `subagent_done` themselves and keep the exits_automatically contract.
 	return entry.mode === "background" ? "exits_automatically" : "human_or_agent_must_finish";
+}
+
+function renderThinkingOverridesLine(entry: AgentListEntry): string | undefined {
+	return entry.thinkingOverrides?.length ? `  thinking_overrides: ${entry.thinkingOverrides.join(", ")}` : undefined;
 }
 
 function renderDefaultModelLine(entry: AgentListEntry): string | undefined {
@@ -216,6 +222,7 @@ function renderAgentListEntry(entry: AgentListEntry, awaitAllLaunches: boolean):
 		`  completion: ${getCompletion(entry)}`,
 		renderDefaultModelLine(entry),
 		renderModelsLine(entry),
+		renderThinkingOverridesLine(entry),
 		...renderSpawningLines(entry),
 		renderVerifiedFanOutLine(entry),
 		...renderLimitLines(entry),
@@ -256,7 +263,7 @@ function renderAgentListRules(flags: AgentListReminderFlags, awaitAllLaunches: b
 		"- completion=exits_automatically means the helper should finish and close itself. completion=human_or_agent_must_finish means the session stays open until the human or helper explicitly completes it.",
 		...renderOptionalRule(
 			flags.hasModelInfo,
-			"- `default_model:` runs when model/thinking are omitted. `models:` lists accepted overrides; `models: any model ref` accepts any available model. An agent with no `models:` line ignores model and thinking overrides. For a listed ref, copy it exactly and split `provider/model:thinking` into model=`provider/model`, thinking=`thinking`. Never use an unlisted model when an explicit list is present.",
+			"- `default_model:` runs when model/thinking are omitted. `models:` lists accepted overrides for model routing; `models: any model ref` accepts any available model. An agent with no `models:` line does not permit model overrides; `thinking_overrides:` independently lists effort levels allowed without changing its model. For a listed ref, copy it exactly and split `provider/model:thinking` into model=`provider/model`, thinking=`thinking`. Never use an unlisted model when an explicit list is present.",
 		),
 		...renderOptionalRule(
 			flags.hasTimeLimits,
@@ -314,6 +321,7 @@ export function getAgentListSignature(entries: AgentListEntry[]): string {
 			thinking: entry.thinking,
 			allowedModels: entry.allowedModels,
 			allowModelOverride: entry.allowModelOverride,
+			thinkingOverrides: entry.thinkingOverrides,
 			spawning: entry.spawning,
 			spawnDepth: entry.spawnDepth,
 			spawnWidth: entry.spawnWidth,

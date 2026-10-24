@@ -67,7 +67,7 @@ export function registerSubagentResumeTool(
 			"Provide sessionFile from the earlier subagent output. If you include task, it is sent as the next instruction in that resumed session.\n" +
 			"\n" +
 			"The resumed helper may run in a visible terminal or hidden process depending on saved metadata or the mode argument. The tool usually returns after starting it; the helper's final report appears later in this chat when it finishes. Do not invent or assume resumed-session results before that later message appears. " +
-			"Leave model/thinking unset unless the user named concrete values for this resume. Do not infer them from quality, depth, urgency, safety, or cost language. " +
+			"Never substitute a locked model. Select thinking only when the user names it or the original launch explicitly opted into an approved task/risk thinking-overrides list. " +
 			"The result arrives automatically as a steer message. Do not poll for it.",
 		parameters: Type.Object({
 			sessionFile: Type.String({
@@ -93,15 +93,15 @@ export function registerSubagentResumeTool(
 					description:
 						"Model routing/cost control only. Omit to keep the original launch model. " +
 						"Set only when the user named a concrete model for this resume; do not infer it from quality, depth, urgency, safety, or cost language. " +
-						"Format: provider/model[:thinking]. Ignored when allow-model-override: false.",
+						"Format: provider/model[:thinking]. Rejected when allow-model-override: false.",
 				}),
 			),
 			thinking: Type.Optional(
 				Type.String({
 					description:
 						"Child runtime thinking level only. Omit to keep the original thinking level. " +
-						"Set only when the user named a concrete thinking level for this resume; do not infer it from quality, depth, urgency, safety, or cost language. " +
-						"Ignored when allow-model-override: false.",
+						"Set only when the user names a level or the original launch explicitly allowed an approved task/risk level in thinking-overrides. " +
+						"Keep the locked model; forbidden or unsupported levels are rejected.",
 				}),
 			),
 			mode: Type.Optional(

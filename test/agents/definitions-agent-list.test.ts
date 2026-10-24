@@ -393,7 +393,7 @@ describe("agent definitions and catalog", () => {
 
 		const reminder = renderAgentListReminderForTest(getAgentListEntriesForTest(dir));
 		assert.doesNotMatch(reminder, /\n {2}models:/);
-		assert.match(reminder, /no `models:` line ignores model and thinking overrides/);
+		assert.match(reminder, /no `models:` line does not permit model overrides/);
 	});
 
 	it("renders the completion contract to match each child's actual exit path", () => {

@@ -160,6 +160,14 @@ export function resolveAvailableModelRef(
 export async function buildChildLaunchPlan(options: ChildLaunchPlanOptions): Promise<ChildLaunchPlan> {
 	const { params, agentDefs, parentCwd, parentSessionDir } = options;
 	const hasAllowedModels = !!agentDefs?.allowedModels?.trim();
+	if (params.thinking && agentDefs?.allowModelOverride === false) {
+		if (!agentDefs.thinkingOverrides?.some((level) => level === params.thinking)) {
+			throw new Error(`Thinking level '${params.thinking}' is not allowed for agent '${params.agent}'.`);
+		}
+		if (!options.modelRegistry?.getAvailable().length) {
+			throw new Error(`Cannot validate thinking level '${params.thinking}' without available model metadata.`);
+		}
+	}
 	const resolveRef = (
 		model: string | undefined,
 		fallbackThinking: string | undefined,
@@ -182,12 +190,15 @@ export async function buildChildLaunchPlan(options: ChildLaunchPlanOptions): Pro
 		return normalizeModelRef(available.model, available.thinking);
 	};
 
-	const requestedModel = params.model ?? agentDefs?.model ?? options.parentModelRef;
+	const configuredModelRef = params.model ?? agentDefs?.model ?? options.parentModelRef;
+	const requestedModel = params.thinking != null && agentDefs?.allowModelOverride === false && configuredModelRef
+		? splitModelRef(configuredModelRef).model
+		: configuredModelRef;
 	const { effectiveModel, effectiveThinking, effectiveModelRef } = resolveRef(
 		requestedModel,
 		params.thinking ?? agentDefs?.thinking ?? options.parentThinking,
 		{
-			resolveAlways: params.model != null,
+			resolveAlways: params.model != null || (params.thinking != null && agentDefs?.allowModelOverride === false),
 			explicitThinking: params.thinking != null,
 		},
 	);

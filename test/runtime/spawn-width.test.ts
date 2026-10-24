@@ -9,7 +9,7 @@ import {
 	tryAcquireSlots,
 } from "../../src/runtime/spawn-width.ts";
 import { registerSubagentCoreTools, type SubagentToolRuntime } from "../../src/tools/subagent-tools.ts";
-import type { RunningSubagent, SubagentResult } from "../../src/types.ts";
+import type { RunningSubagent, SubagentParamsInput, SubagentResult } from "../../src/types.ts";
 import {
 	afterEach,
 	assert,
@@ -79,6 +79,29 @@ function registerToolWithRuntime(runtimeOverrides: Partial<SubagentToolRuntime> 
 	return tools.get("subagent");
 }
 
+async function runAsRootCaller<T>(run: () => Promise<T>): Promise<T> {
+	const keys = [
+		"PI_SUBAGENT_AGENT",
+		"PI_SUBAGENT_SPAWN_BUDGET",
+		"PI_SUBAGENT_SPAWN_DEPTH",
+		"PI_SUBAGENT_SPAWN_WIDTH",
+		"PI_SUBAGENT_SPAWN_WIDTH_EFFECTIVE",
+		"PI_SUBAGENT_SPAWNABLE",
+	] as const;
+	const previous = new Map(keys.map((key) => [key, process.env[key]]));
+	for (const key of keys) delete process.env[key];
+	process.env.PI_SUBAGENT_SPAWNABLE = "true";
+	try {
+		return await run();
+	} finally {
+		for (const key of keys) {
+			const value = previous.get(key);
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
+	}
+}
+
 function toolContext() {
 	return {
 		hasUI: false,
@@ -139,6 +162,38 @@ describe("spawn width semaphore", () => {
 		const result = await tool.execute("call-1", child("worker-a"), undefined, undefined, toolContext());
 		assert.match(result.content[0].text, /Spawn width limit reached \(1\/1 slots busy\)/);
 		assert.match(result.content[0].text, /subagent_kill/);
+		assert.equal(launches, 0);
+	});
+
+	it("launches approved thinking overrides without model substitution", async () => {
+		let launched: SubagentParamsInput | undefined;
+		const tool = registerToolWithRuntime({
+			loadAgentDefaults: () => ({ model: "provider/locked", spawning: true, allowModelOverride: false, thinkingOverrides: ["off", "low", "medium", "high"] }),
+			launchBackgroundSubagent: async (params) => {
+				launched = params;
+				return makeRunning(params.name);
+			},
+		});
+		await runAsRootCaller(() => tool.execute("call-override", { ...child("worker-a"), thinking: "off" }, undefined, undefined, toolContext()));
+		assert.equal(launched?.model, undefined);
+		assert.equal(launched?.thinking, "off");
+	});
+
+	it("rejects a spoofed model suffix in a batch before launching any child", async () => {
+		let launches = 0;
+		const tool = registerToolWithRuntime({
+			loadAgentDefaults: () => ({ model: "provider/locked", spawning: true, allowModelOverride: false, thinkingOverrides: ["off", "low", "medium", "high"] }),
+			launchBackgroundSubagent: async (params) => {
+				launches++;
+				return makeRunning(params.name);
+			},
+		});
+		await runAsRootCaller(() => assert.rejects(() => tool.execute("call-batch", {
+			children: [
+				{ ...child("worker-a"), thinking: "off" },
+				{ ...child("worker-b"), model: "provider/locked:off" },
+			],
+		}, undefined, undefined, toolContext()), /model override is not allowed/));
 		assert.equal(launches, 0);
 	});
 

@@ -46,6 +46,7 @@ import "./launch/herdr-interactive-launch.test.ts";
 import "./launch/config.test.ts";
 import "./launch/skill-visibility.test.ts";
 import "./launch/resume-model-config.test.ts";
+import "./launch/thinking-overrides.test.ts";
 import "./launch/env-frontmatter.test.ts";
 import "./agents/definitions-agent-list.test.ts";
 import "./agents/agent-list-runtime-contract.test.ts";

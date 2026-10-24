@@ -43,6 +43,7 @@ export interface PersistedSubagentLaunchMetadata {
 	definitionThinking?: string;
 	allowedModels?: string;
 	allowModelOverride?: boolean;
+	thinkingOverrides?: Array<"off" | "low" | "medium" | "high">;
 	modelSource?: "parent" | "agent" | "launch-override" | "resume-override";
 	requestedModelOverride?: string;
 	requestedThinkingOverride?: string;

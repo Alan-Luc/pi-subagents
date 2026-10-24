@@ -7,6 +7,7 @@ import { resolveVerifierCandidateCount } from "../vf/criteria.ts";
 import {
 	enforceAgentFrontmatter,
 	getSubagentAgentRequirementError,
+	getSubagentAgentOverrideError,
 	resolveSubagentBlocking,
 	shouldUseBackgroundLaunch,
 } from "../launch/policy.ts";
@@ -49,9 +50,9 @@ const SUBAGENT_MODEL_DESCRIPTION =
 	"Never invent or upgrade models. Format: provider/model; put provider/model:thinking suffix in `thinking`.";
 
 const SUBAGENT_THINKING_DESCRIPTION =
-	"Child runtime thinking level only. Omit unless the user named a concrete thinking level for this launch. " +
-	"Do not infer thinking from quality, depth, urgency, safety, or cost language. " +
-	"Use a thinking level supported by the selected model and the installed Pi version.";
+	"Child runtime thinking level only. Omit unless the user named a concrete thinking level or the selected agent explicitly allows a task/risk effort level. " +
+	"For opted-in agents, choose only from that agent's approved thinking-overrides list; do not infer an effort beyond the approved task/risk policy. " +
+	"Use a level supported by the locked model and installed Pi version.";
 
 export const SubagentChildParams = Type.Object({
 	name: Type.String({ description: SUBAGENT_NAME_DESCRIPTION }),
@@ -187,6 +188,8 @@ function getLaunchError(
 		return "Error: title is required for subagent launches. Provide a short sentence-case title for the child session/widget.";
 	const agentError = getSubagentAgentRequirementError(params, agentDefs);
 	if (agentError) return agentError.content[0]?.text ?? "Agent requirement error";
+	const overrideError = getSubagentAgentOverrideError(params, agentDefs);
+	if (overrideError) return overrideError.content[0]?.text ?? "Model/thinking override error";
 	if (params.agent && currentAgent && params.agent === currentAgent) {
 		return `You are the ${currentAgent} agent — do not start another ${currentAgent}. You were spawned to do this work yourself. Complete the task directly.`;
 	}
@@ -396,7 +399,7 @@ export function registerSubagentCoreTools(
 				"Launch one or more named helper agents from the subagent roster. " +
 				"Agent definitions own model, tools, context, UI mode, wait behavior, and completion lifecycle; " +
 				"this call chooses the agent name(s), task(s), and titles. " +
-				"Model/thinking are routing controls, not quality knobs; set them only when the user named concrete values.",
+				"Model is routing only and may not substitute for an agent's locked model. Thinking may be selected only when the user names it or the agent explicitly opts into an approved task/risk effort list.",
 			promptSnippet:
 				"Subagents are separate helper processes you can launch to do work outside this chat turn.\n" +
 				"\n" +
@@ -412,7 +415,7 @@ export function registerSubagentCoreTools(
 				"- Before a pure async launch, derive the full ready set from approved dependencies and exact path ownership; launch every ready disjoint helper slice in one children batch.\n" +
 				"- Complete ready parent-owned work before that launch; the runtime may end the parent turn after the batch, so never claim yielded parent work remains active.\n" +
 				"- If the user names multiple agents, include each named agent exactly once. Do not substitute one agent for another.\n" +
-				"- Leave model/thinking unset unless the user named concrete values. Do not infer them from quality, depth, urgency, safety, or cost language.\n" +
+				"- Never set model to substitute for a locked agent model. Set thinking only when the user names it or the agent explicitly opts into a bounded task/risk effort list; do not invent levels outside that list.\n" +
 				"\n" +
 				"Writing tasks:\n" +
 				"- Translate the user's request into each helper's task; do not change the work just because of the agent name.\n" +

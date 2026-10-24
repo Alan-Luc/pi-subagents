@@ -8,6 +8,7 @@ export interface AgentDefaults {
 	model?: string;
 	allowedModels?: string;
 	allowModelOverride?: boolean;
+	thinkingOverrides?: Array<"off" | "low" | "medium" | "high">;
 	tools?: string;
 	skills?: string;
 	injectSkills?: string;
@@ -117,6 +118,10 @@ function parseAgentDefinition(
 	const spawningRaw = get("spawning");
 	const autoExitRaw = get("auto-exit");
 	const allowModelOverrideRaw = get("allow-model-override");
+	const thinkingOverrides = parseThinkingOverrides(get("thinking-overrides"), hasKey("thinking-overrides"), path);
+	if (thinkingOverrides && allowModelOverrideRaw !== "false") {
+		throw new Error(`thinking-overrides requires allow-model-override: false in ${path}.`);
+	}
 	const modeRaw = get("mode");
 	const sessionModeRaw = get("session-mode");
 	const asyncRaw = get("async");
@@ -176,6 +181,7 @@ function parseAgentDefinition(
 		model: get("model"),
 		allowedModels: get("allowed-models"),
 		allowModelOverride: allowModelOverrideRaw != null ? allowModelOverrideRaw === "true" : undefined,
+		...(thinkingOverrides !== undefined ? { thinkingOverrides } : {}),
 		tools: get("tools"),
 		skills: get("skills"),
 		injectSkills: injectSkillsRaw,
@@ -241,6 +247,28 @@ function parseSpawning(raw: string | undefined): true | string[] | false {
 		}
 	}
 	return names;
+}
+
+function parseThinkingOverrides(
+	raw: string | undefined,
+	present: boolean,
+	path: string,
+): Array<"off" | "low" | "medium" | "high"> | undefined {
+	if (!present) return undefined;
+	const levels = raw?.split(",").map((level) => level.trim());
+	if (!levels?.length) {
+		throw new Error(`thinking-overrides must be a comma-separated list of off, low, medium, or high in ${path}.`);
+	}
+	const parsed: Array<"off" | "low" | "medium" | "high"> = [];
+	for (const level of levels) {
+		if (level === "off" || level === "low" || level === "medium" || level === "high") parsed.push(level);
+		else {
+			throw new Error(
+				`thinking-overrides must be a comma-separated list of off, low, medium, or high in ${path}.`,
+			);
+		}
+	}
+	return [...new Set(parsed)];
 }
 
 function parsePositiveInteger(key: string, raw: string | undefined, present: boolean): number | undefined {
