@@ -5,6 +5,7 @@ import {
 	afterEach,
 	assert,
 	createTestDir,
+	createTestEventBus,
 	describe,
 	it,
 	join,
@@ -94,6 +95,7 @@ describe("roster filtering", () => {
 			on(event: string, handler: any) {
 				handlers.set(event, handler);
 			},
+			events: createTestEventBus(),
 			registerTool() {},
 			registerCommand() {},
 			registerMessageRenderer() {},

@@ -3,6 +3,7 @@ import {
 	afterEach,
 	assert,
 	createTestDir,
+	createTestEventBus,
 	describe,
 	it,
 	join,
@@ -32,6 +33,7 @@ function createCapturingPi(): { captured: CapturedRegistrations; api: ExtensionA
 		on(event: string, handler: unknown) {
 			captured.handlers.set(event, handler);
 		},
+		events: createTestEventBus(),
 		registerTool(tool: { name: string }) {
 			captured.tools.push(tool.name);
 		},

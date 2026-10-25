@@ -2,6 +2,7 @@ import {
 	afterEach,
 	assert,
 	createTestDir,
+	createTestEventBus,
 	describe,
 	getAgentListSignatureForTest,
 	getCompletedSubagentResultForTest,
@@ -467,6 +468,7 @@ describe("subagent launch result delivery", () => {
 			on(event: string, handler: any) {
 				handlers.set(event, handler);
 			},
+			events: createTestEventBus(),
 			registerCommand() {},
 			registerMessageRenderer() {},
 			registerTool() {},
@@ -565,6 +567,7 @@ describe("subagent launch result delivery", () => {
 			on(event: string, handler: any) {
 				handlers.set(event, handler);
 			},
+			events: createTestEventBus(),
 			registerCommand() {},
 			registerMessageRenderer() {},
 			registerTool() {},

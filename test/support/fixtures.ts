@@ -3,6 +3,21 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { getEntries } from "../../src/session/session.ts";
 
+export function createTestEventBus() {
+	const listeners = new Map<string, Set<(payload: unknown) => void>>();
+	return {
+		on(channel: string, listener: (payload: unknown) => void) {
+			const channelListeners = listeners.get(channel) ?? new Set();
+			channelListeners.add(listener);
+			listeners.set(channel, channelListeners);
+			return () => channelListeners.delete(listener);
+		},
+		emit(channel: string, payload: unknown) {
+			for (const listener of listeners.get(channel) ?? []) listener(payload);
+		},
+	};
+}
+
 export function createTestDir(): string {
 	return mkdtempSync(join(tmpdir(), "subagents-test-"));
 }

@@ -2,6 +2,7 @@ import {
 	afterEach,
 	assert,
 	createTestDir,
+	createTestEventBus,
 	describe,
 	getAgentListEntriesForTest,
 	getAgentListSignatureForTest,
@@ -499,6 +500,7 @@ describe("agent definitions and catalog", () => {
 
 		subagentsExtension({
 			on() {},
+			events: createTestEventBus(),
 			registerCommand() {},
 			registerMessageRenderer() {},
 			sendMessage() {},
@@ -545,6 +547,7 @@ describe("agent definitions and catalog", () => {
 
 		subagentsExtension({
 			on() {},
+			events: createTestEventBus(),
 			registerCommand() {},
 			registerMessageRenderer() {},
 			sendMessage() {},
@@ -571,6 +574,7 @@ describe("agent definitions and catalog", () => {
 		try {
 			subagentsExtension({
 				on() {},
+				events: createTestEventBus(),
 				registerCommand() {},
 				registerMessageRenderer() {},
 				sendMessage() {},

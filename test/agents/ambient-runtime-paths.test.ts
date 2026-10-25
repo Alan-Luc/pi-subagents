@@ -3,6 +3,7 @@ import {
 	assert,
 	buildSubagentSessionTitleForTest,
 	createTestDir,
+	createTestEventBus,
 	describe,
 	existsSync,
 	getSessionArtifactDir,
@@ -55,6 +56,7 @@ describe("ambient agents and runtime paths", () => {
 				on(event: string, handler: any) {
 					handlers.set(event, handler);
 				},
+				events: createTestEventBus(),
 				registerCommand() {},
 				registerMessageRenderer() {},
 				registerTool() {},
@@ -225,6 +227,7 @@ describe("ambient agents and runtime paths", () => {
 			process.chdir(dir);
 			subagentsExtension({
 				on() {},
+				events: createTestEventBus(),
 				registerCommand() {},
 				registerMessageRenderer() {},
 				sendMessage() {},
