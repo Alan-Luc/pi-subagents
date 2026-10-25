@@ -5,8 +5,18 @@ class OutstandingWork {
 	private pending = new Set<string>();
 	private consumed = new Set<string>();
 	private listener?: () => void;
+	private revision = 0;
+	private changed(): void { this.revision += 1; this.listener?.(); }
 	/** Registry changes, including resume/adoption and clear, share one notification boundary. */
-	readonly running = new RunningWorkMap(() => this.listener?.());
+	readonly running = new RunningWorkMap(() => this.changed());
+
+	snapshot(): Readonly<{ revision: number; runningChildIds: string[]; pendingResultIds: string[] }> {
+		return {
+			revision: this.revision,
+			runningChildIds: [...this.running.values()].filter((child) => !child.verifiedRunCancelDenied).map((child) => child.id).sort(),
+			pendingResultIds: [...this.pending].filter((id) => !this.consumed.has(id)).sort(),
+		};
+	}
 
 	/** Subscribe for the lifetime of the owning session. */
 	subscribe(listener: () => void): () => void {
@@ -23,17 +33,14 @@ class OutstandingWork {
 		return ids.size;
 	}
 
-	delivery(id: string, send: () => void, consumedOnDelivery = false): void {
-		// No consumer means no reporting state to retain (headless/non-Herdr).
-		if (!this.listener) { send(); return; }
+	delivery(id: string, send: () => void): void {
 		this.pending.add(id);
-		if (consumedOnDelivery) this.consumed.add(id);
-		else this.consumed.delete(id);
-		this.listener();
+		this.consumed.delete(id);
+		this.changed();
 		try { send(); } catch (error) {
 			this.pending.delete(id);
 			this.consumed.delete(id);
-			this.listener?.();
+			this.changed();
 			throw error;
 		}
 	}
@@ -45,7 +52,10 @@ class OutstandingWork {
 			if (!("customType" in message) || !["subagent_result", "subagent_ping"].includes(String(message.customType))) continue;
 			if (!("details" in message) || !message.details || typeof message.details !== "object") continue;
 			if ("id" in message.details && typeof message.details.id === "string" && this.pending.has(message.details.id)) {
-				this.consumed.add(message.details.id);
+				if (!this.consumed.has(message.details.id)) {
+					this.consumed.add(message.details.id);
+					this.changed();
+				}
 			}
 		}
 	}
@@ -54,13 +64,14 @@ class OutstandingWork {
 	settle(): void {
 		for (const id of this.consumed) this.pending.delete(id);
 		this.consumed.clear();
-		this.listener?.();
+		this.changed();
 	}
 
 	/** Discard session-scoped delivery bookkeeping at shutdown. */
 	reset(): void {
 		this.pending.clear();
 		this.consumed.clear();
+		this.changed();
 	}
 }
 
