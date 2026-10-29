@@ -65,6 +65,7 @@ import "./runtime/timeout-budget.test.ts";
 import "./runtime/timeout-wrap-up.test.ts";
 import "./runtime/timeout-result-delivery.test.ts";
 import "./runtime/state.test.ts";
+import "./runtime/finalized-result.test.ts";
 import "./runtime/elapsed-format.test.ts";
 import "./runtime/fork-session-manager.test.ts";
 import "./runtime/orchestrator-artifacts.test.ts";

@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { readPublicationLaunchBinding, requestFinalizedResult, type FinalizedResultRef } from "../runtime/finalized-result.ts";
 import {
 	endedAtToolUseBoundary,
 	findLatestAssistantError,
@@ -104,6 +105,11 @@ export default function (pi: ExtensionAPI) {
 	const autoExit = process.env.PI_SUBAGENT_AUTO_EXIT === "1";
 	const isInteractive = !!process.env.PI_SUBAGENT_SURFACE;
 	const denied: string[] = getDeniedToolNames(autoExit);
+	const publicationBinding = readPublicationLaunchBinding();
+	let completionPending = false;
+	let finalizationEpoch = 0;
+	let attemptedFinalizationEpoch = -1;
+	let finalizedResultRef: FinalizedResultRef | undefined;
 	let outputTokens = 0;
 	let finalContextUsage: FinalContextSnapshot | undefined;
 	// Factory-scoped because the takeover machinery that suppresses it lives
@@ -126,6 +132,21 @@ export default function (pi: ExtensionAPI) {
 		pi,
 		getFinalContextUsage: () => finalContextUsage,
 		hasDeliveredFinalWarning: () => contextReminders.hasDeliveredFinalWarning(),
+	});
+
+	pi.on("agent_start", () => { completionPending = false; finalizedResultRef = undefined; finalizationEpoch++; });
+	pi.on("input", () => { completionPending = false; finalizedResultRef = undefined; finalizationEpoch++; });
+	pi.on("agent_settled", async (event, ctx) => {
+		if (!publicationBinding || event.aborted || ctx.hasPendingMessages?.() || attemptedFinalizationEpoch === finalizationEpoch) return;
+		const epoch = finalizationEpoch;
+		attemptedFinalizationEpoch = epoch;
+		const ref = await requestFinalizedResult(pi, ctx, publicationBinding);
+		if (epoch !== finalizationEpoch) return;
+		finalizedResultRef = ref;
+		if (!completionPending) return;
+		completionPending = false;
+		writeExitSignal({ type: "done", outputTokens, ...(ref ? { finalizedResultRef: ref } : {}) }, { supersede: true });
+		requestShutdown(ctx);
 	});
 
 	const subagentName = process.env.PI_SUBAGENT_NAME ?? "";
@@ -276,6 +297,7 @@ export default function (pi: ExtensionAPI) {
 	// If the run ended on an unrecovered provider error, surface that instead of a
 	// phony "done" so the parent learns it was a failure, not a clean completion.
 	pi.on("session_shutdown", () => {
+		finalizationEpoch++;
 		providerErrorRecovery.cancelPendingRecovery();
 		cancelPendingPiRecovery();
 		if (pendingProviderError) {
@@ -288,7 +310,7 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		// A shutdown is a lifecycle event, not the child deciding to stop.
-		writeExitSignal({ type: "done", outputTokens }, { autonomous: false });
+		writeExitSignal({ type: "done", outputTokens, ...(finalizedResultRef ? { finalizedResultRef } : {}) }, { autonomous: false });
 	});
 
 	pi.on("session_before_compact", (event) => {
@@ -489,6 +511,7 @@ export default function (pi: ExtensionAPI) {
 			providerErrorRecovery.cancelPendingRecovery(true);
 			cancelPendingPiRecovery();
 			if (autoExitDisabledByOperator) return;
+			if (publicationBinding) { completionPending = true; return; }
 			writeExitSignal({ type: "done", outputTokens }, { supersede: true });
 			requestShutdown(ctx);
 		});
@@ -528,6 +551,10 @@ export default function (pi: ExtensionAPI) {
 				"Your LAST assistant message before calling this becomes the summary returned to the caller.",
 			parameters: doneParams,
 			async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+				if (publicationBinding) {
+					completionPending = true;
+					return { content: [{ type: "text", text: "Completion will be finalized after settlement." }], details: {}, terminate: true };
+				}
 				writeExitSignal({ type: "done", outputTokens }, { supersede: true });
 				requestShutdown(ctx);
 				return {

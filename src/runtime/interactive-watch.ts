@@ -306,6 +306,7 @@ async function watchInteractiveGeneration(
 				exitCode: timeoutFields.timedOut ? pollResult.exitCode || 1 : pollResult.exitCode,
 				elapsed,
 				outputTokens: pollResult.outputTokens ?? exitSignal?.outputTokens,
+				finalizedResultRef: pollResult.finalizedResultRef ?? exitSignal?.finalizedResultRef,
 				...finalContextUsage,
 				...timeoutFields,
 				...(running.timeoutWrapUp ? { timeoutWrapUp: running.timeoutWrapUp } : {}),

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { LAUNCH_BINDING_ENV, revokePublicationBinding } from "./finalized-result.ts";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -271,6 +272,7 @@ export async function resumeSubagentSession(
 	input: ResumeSessionInput,
 	runtime: ResumeServiceRuntime,
 ): Promise<RunningSubagent> {
+	revokePublicationBinding(input.sessionFile);
 	// Verified fan-out candidates are non-resumable (SPEC): their run is
 	// finalized and their worktree workspace is deleted after selection, so a
 	// resume would resurrect a session whose cwd no longer exists. Follow-up
@@ -490,6 +492,7 @@ async function resumeSubagentSessionWithoutWidth(
 	resumeEnvVars.PI_SUBAGENT_NAME = invocationMetadata?.name ?? name;
 	resumeEnvVars.PI_SUBAGENT_AGENT = resumedAgent ?? "";
 	resumeEnvVars.PI_SUBAGENT_SESSION = sessionFile;
+	resumeEnvVars[LAUNCH_BINDING_ENV] = "";
 
 	const resumedAsync = invocationMetadata?.async ?? metadata.async ?? true;
 	resumeEnvVars.PI_SUBAGENT_AUTO_EXIT = resumedAutoExit ? "1" : "";

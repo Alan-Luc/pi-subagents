@@ -1,9 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
+import { isFinalizedResultRef, type FinalizedResultRef } from "../runtime/finalized-result.ts";
 import { clearSubagentExitSidecar, getSubagentExitSidecarPath } from "../session/exit-sidecar.ts";
 import { getInteractiveProcessFile } from "../session/interactive-process.ts";
 import { readScreenAsync } from "./io.ts";
 
 export interface PollResult {
+	finalizedResultRef?: FinalizedResultRef;
 	reason: "done" | "ping" | "sentinel" | "error";
 	exitCode: number;
 	outputTokens?: number;
@@ -78,7 +80,9 @@ function interpretExitSidecar(data: any): PollResult {
 				: "Subagent exited with stopReason=error (no errorMessage in sidecar).";
 		return withUsage({ reason: "error" as const, exitCode: 1, errorMessage });
 	}
-	return withUsage({ reason: "done" as const, exitCode: 0 });
+	return withUsage({ reason: "done" as const, exitCode: 0,
+		...(data?.type === "done" && isFinalizedResultRef(data.finalizedResultRef) ? { finalizedResultRef: data.finalizedResultRef } : {}),
+	});
 }
 
 export const __pollForExitTest__ = { interpretExitSidecar };

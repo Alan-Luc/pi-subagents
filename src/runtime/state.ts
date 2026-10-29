@@ -1,4 +1,5 @@
 import { outstandingWork } from "./outstanding-work.ts";
+import { captureFinalizedResult, notePublicationResultChange, resetPublicationBindings } from "./finalized-result.ts";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { getSubagentTerminalStopReason } from "../session/session.ts";
 import type { CompletedSubagentResult, RunningSubagent, SubagentCompletionStatus, SubagentResult } from "../types.ts";
@@ -6,7 +7,12 @@ import { releaseSpawnWidthSlot, resetSpawnWidthForTest } from "./spawn-width.ts"
 import { SubagentWidgetManager } from "./widget.ts";
 
 export const runningSubagents = outstandingWork.running;
-export const completedSubagentResults = new Map<string, CompletedSubagentResult>();
+class CompletedResultMap extends Map<string, CompletedSubagentResult> {
+	override set(id: string, result: CompletedSubagentResult): this { super.set(id, result); notePublicationResultChange(); return this; }
+	override delete(id: string): boolean { const removed = super.delete(id); if (removed) notePublicationResultChange(); return removed; }
+	override clear(): void { super.clear(); notePublicationResultChange(); }
+}
+export const completedSubagentResults = new CompletedResultMap();
 
 function getSubagentCompletionStatus(
 	result: SubagentResult,
@@ -43,12 +49,19 @@ export function buildCompletedSubagentResult(
 	running: RunningSubagent,
 	result: SubagentResult,
 ): CompletedSubagentResult {
+	const { finalizedResultRef, ...ordinaryResult } = result;
+	const status = getSubagentCompletionStatus(result, running);
+	const envelope = status === "completed" && result.exitCode === 0 && !result.ping && !result.error && !result.timeoutWrapUp
+		&& !running.noSession && !running.timeoutWrapUp && running.launchBinding && finalizedResultRef
+		? captureFinalizedResult(running.sessionFile, running.launchBinding, finalizedResultRef) : undefined;
 	return {
-		...result,
+		...ordinaryResult,
+		...(envelope ? { finalizedResultRef: Object.freeze({ ...finalizedResultRef! }), finalizedResultEnvelope: envelope } : {}),
+		...(running.launchBinding ? { launchBinding: running.launchBinding } : {}),
 		id: running.id,
 		agent: running.agent,
 		mode: running.mode,
-		status: getSubagentCompletionStatus(result, running),
+		status,
 		deliveryState: running.deliveryState,
 		parentClosePolicy: running.parentClosePolicy,
 		async: running.async !== false,
@@ -156,6 +169,7 @@ export function resetRuntimeStateForTest(resetAmbient: () => void): void {
 	runningSubagents.clear();
 	outstandingWork.reset();
 	completedSubagentResults.clear();
+	resetPublicationBindings();
 	resetSpawnWidthForTest();
 	resetSubagentBatchStopRequest();
 	widgetManager.reset();
