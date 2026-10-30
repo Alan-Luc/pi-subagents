@@ -12,6 +12,7 @@ import {
 	assert,
 	afterEach,
 	createTestDir,
+	createTestEventBus,
 	describe,
 	getLaunchedSubagentResultForTest,
 	it,
@@ -421,6 +422,7 @@ describe("coordinator-turn launch hardening", () => {
 				on(event: string, handler: (event: unknown, ctx: unknown) => unknown) {
 					handlers.set(event, handler);
 				},
+				events: createTestEventBus(),
 				registerTool() {},
 				registerCommand() {},
 				registerMessageRenderer() {},

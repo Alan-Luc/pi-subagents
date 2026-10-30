@@ -1,4 +1,5 @@
 import type { ChildProcess } from "node:child_process";
+import type { FinalizedResultEnvelope, FinalizedResultRef, PublicationLaunchBinding } from "./runtime/finalized-result.ts";
 import type { PersistedSubagentLaunchMetadata } from "./session/session-files.ts";
 
 export type DeliveryState = "detached" | "awaited";
@@ -64,6 +65,7 @@ interface SubagentPing {
 }
 
 export interface SubagentResult {
+	finalizedResultRef?: FinalizedResultRef;
 	name: string;
 	task: string;
 	summary: string;
@@ -100,6 +102,8 @@ export interface SubagentResult {
 }
 
 export interface CompletedSubagentResult extends SubagentResult {
+	launchBinding?: PublicationLaunchBinding;
+	finalizedResultEnvelope?: FinalizedResultEnvelope;
 	id: string;
 	agent?: string;
 	mode: "interactive" | "background";
@@ -115,6 +119,7 @@ export interface CompletedSubagentResult extends SubagentResult {
 }
 
 export interface RunningSubagent {
+	launchBinding?: PublicationLaunchBinding;
 	id: string;
 	name: string;
 	task: string;

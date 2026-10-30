@@ -34,6 +34,19 @@ function listEntries(dir: string) {
 describe("roster limit fields", () => {
 	afterEach(() => resetSubagentStateForTest());
 
+	it("shows configured thinking-only effort choices beside the locked agent", () => {
+		const dir = createTestDir();
+		writeLimitedAgent(dir, "model: anthropic/claude-sonnet-5\nallow-model-override: false\nthinking-overrides: off, low, medium, high");
+		const entries = listEntries(dir);
+		assert.deepEqual(entries[0]?.thinkingOverrides, ["off", "low", "medium", "high"]);
+		const signature = getAgentListSignature(entries);
+		writeLimitedAgent(dir, "model: anthropic/claude-sonnet-5\nallow-model-override: false\nthinking-overrides: low, medium");
+		assert.notEqual(getAgentListSignature(listEntries(dir)), signature);
+		const reminder = renderAgentListReminder(entries);
+		assert.match(reminder, /thinking_overrides: off, low, medium, high/);
+		assert.match(reminder, /without changing its model/);
+	});
+
 	it("renders limit lines and handling rules when the fields are set", () => {
 		const dir = createTestDir();
 		writeLimitedAgent(

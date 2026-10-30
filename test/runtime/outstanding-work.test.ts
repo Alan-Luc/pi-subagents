@@ -148,7 +148,7 @@ test("awaited children and manual-close children count, foreign adopted observat
 	} finally { await h.stop(); }
 });
 
-test("a report parked for the operator's next prompt releases its lease on the settle that follows", async () => {
+test("a parked report stays outstanding until model consumption and the following settle", async () => {
 	const h = await harness();
 	const savedAutoExit = process.env.PI_SUBAGENT_AUTO_EXIT;
 	delete process.env.PI_SUBAGENT_AUTO_EXIT;
@@ -162,6 +162,9 @@ test("a report parked for the operator's next prompt releases its lease on the s
 		await new Promise<void>((resolve) => setImmediate(resolve));
 		assert.equal(h.deliveries.at(-1)?.deliverAs, "nextTurn");
 		assert.equal(runningSubagents.size, 0);
+		await h.emit("agent_settled");
+		assert.equal(h.counts.at(-1), 1, "queued is not consumed");
+		await h.emit("context", { messages: h.messages.map((message) => ({ ...message, role: "custom" })) });
 		await h.emit("agent_settled");
 		assert.equal(h.counts.at(-1), 0);
 	} finally {

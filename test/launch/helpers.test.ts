@@ -2,6 +2,7 @@ import {
 	assert,
 	buildPiPromptArgsForTest,
 	createTestDir,
+	createTestEventBus,
 	describe,
 	getShellReadyDelayMs,
 	it,
@@ -53,6 +54,7 @@ describe("launch helpers", () => {
 		try {
 			subagentsExtension({
 				on() {},
+				events: createTestEventBus(),
 				registerCommand() {},
 				registerMessageRenderer() {},
 				sendMessage() {},
@@ -67,6 +69,7 @@ describe("launch helpers", () => {
 			tools.clear();
 			subagentsExtension({
 				on() {},
+				events: createTestEventBus(),
 				registerCommand() {},
 				registerMessageRenderer() {},
 				sendMessage() {},

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
 	mkdirSync,
 	mkdtempSync,
+	readFileSync,
 	rmSync,
 	symlinkSync,
 	unlinkSync,
@@ -97,6 +98,35 @@ test("capability version 1 uses the exact path and operation matrix", () => {
 			);
 		}
 	}
+});
+
+test("topic log reads require additive negotiation without widening mutations or legacy paths", () => {
+	const events = createEvents();
+	const gate = createOrchestratorArtifactGate(events);
+	const cwd = mkdtempSync(join(tmpdir(), "pi-subagents-topic-"));
+	const path = ".harness/2026/10/24/local-feature.md";
+	const readEvent = { toolName: "read", input: { path } } as const;
+	try {
+		mkdirSync(join(cwd, ".harness/2026/10/24"), { recursive: true });
+		writeFileSync(join(cwd, path), "topic history\n");
+		assert.equal(gate.handleToolCall(readEvent, { cwd }, ["read"])?.block, true);
+		events.emit(ARTIFACT_CAPABILITY_CHANNEL, { version: 1, mutations: true });
+		assert.equal(gate.handleToolCall(readEvent, { cwd }, ["read"])?.block, true);
+		events.emit(ARTIFACT_CAPABILITY_CHANNEL, { version: 1, mutations: true, topicLogs: 1 });
+		assert.equal(gate.handleToolCall(readEvent, { cwd }, ["read"]), undefined, "the real announced topic feature must unlock its read grammar");
+		assert.equal(readFileSync(join(cwd, path), "utf8"), "topic history\n");
+		for (const toolName of ["write", "edit"] as const) {
+			assert.equal(gate.handleToolCall({ toolName, input: { path } }, { cwd }, ["read", "write", "edit"])?.block, true);
+		}
+		for (const topicLogs of [undefined, 2, "1"]) {
+			events.emit(ARTIFACT_CAPABILITY_CHANNEL, { version: 1, mutations: true, topicLogs });
+			assert.equal(gate.handleToolCall(readEvent, { cwd }, ["read"])?.block, true);
+			assert.equal(gate.handleToolCall({ toolName: "read", input: { path: CAPABILITY_PATHS.daily } }, { cwd }, ["read"]), undefined);
+		}
+		events.emit(ARTIFACT_CAPABILITY_CHANNEL, { version: 2, mutations: true, topicLogs: 1 });
+		assert.equal(gate.handleToolCall(readEvent, { cwd }, ["read"])?.block, true);
+		assert.equal(readFileSync(join(cwd, path), "utf8"), "topic history\n");
+	} finally { rmSync(cwd, { recursive: true, force: true }); }
 });
 
 test("the normal baseline controls artifact tools and capability gates mutations", () => {

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { LAUNCH_BINDING_ENV, revokePublicationBinding } from "./finalized-result.ts";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -139,12 +140,43 @@ export function resolveResumeLaunchMetadataForInvocation(
 	requestedThinking?: string,
 	modelRegistry?: ResumeServiceRuntime["modelRegistry"],
 ): PersistedSubagentLaunchMetadata | undefined {
-	if (!launchMetadata || (!requestedModel && !requestedThinking)) return launchMetadata;
+	if (!launchMetadata || (launchMetadata.allowModelOverride !== false && requestedModel == null && requestedThinking == null)) {
+		return launchMetadata;
+	}
 	if (launchMetadata.allowModelOverride === false) {
+		if (requestedModel != null) throw new Error(`Model override is not allowed for agent '${launchMetadata.name}'.`);
+		if (requestedThinking == null) {
+			const modelRef = launchMetadata.modelRef ?? launchMetadata.model;
+			const split = modelRef ? splitResumeModelRef(modelRef, launchMetadata.thinking) : undefined;
+			if (split?.thinking != null) {
+				if (!modelRegistry?.getAvailable().length) {
+					throw new Error(`Cannot validate thinking level '${split.thinking}' without available model metadata.`);
+				}
+				resolveAvailableModelRef(split.model, split.thinking, true, modelRegistry, modelRef);
+			}
+			return launchMetadata;
+		}
+		if (!launchMetadata.thinkingOverrides?.some((level) => level === requestedThinking)) {
+			throw new Error(`Thinking override '${requestedThinking}' is not allowed for agent '${launchMetadata.name}'.`);
+		}
+		const baseModel = launchMetadata.modelRef ?? launchMetadata.model;
+		if (!baseModel) throw new Error("Cannot apply thinking override without a persisted model.");
+		if (!modelRegistry?.getAvailable().length) {
+			throw new Error(`Cannot validate thinking level '${requestedThinking}' without available model metadata.`);
+		}
+		const split = splitResumeModelRef(baseModel, launchMetadata.thinking);
+		const resolved = resolveAvailableModelRef(split.model, requestedThinking, true, modelRegistry, baseModel);
+		const { effectiveModel, effectiveThinking, effectiveModelRef } = normalizeModelRef(resolved.model, resolved.thinking);
 		return {
 			...launchMetadata,
-			...(requestedModel ? { ignoredModelOverride: requestedModel } : {}),
-			...(requestedThinking ? { ignoredThinkingOverride: requestedThinking } : {}),
+			timestamp: new Date().toISOString(),
+			model: effectiveModel,
+			thinking: effectiveThinking,
+			modelRef: effectiveModelRef,
+			modelSource: "resume-override",
+			requestedThinkingOverride: requestedThinking,
+			ignoredModelOverride: undefined,
+			ignoredThinkingOverride: undefined,
 		};
 	}
 	const baseModel = requestedModel ?? launchMetadata.modelRef ?? launchMetadata.model;
@@ -180,11 +212,12 @@ export function resolveResumeLaunchMetadataForInvocation(
 	};
 }
 
-function mergeResumeInvocationMetadata(
+export function mergeResumeInvocationMetadata(
 	launchMetadata: PersistedSubagentLaunchMetadata,
 	laterMetadata: PersistedSubagentLaunchMetadata,
+	modelRegistry?: ResumeServiceRuntime["modelRegistry"],
 ): PersistedSubagentLaunchMetadata {
-	return {
+	const merged = {
 		...launchMetadata,
 		...laterMetadata,
 		// A child can append metadata to its own session. Keep grant authority
@@ -193,6 +226,36 @@ function mergeResumeInvocationMetadata(
 		spawnBudget: launchMetadata.spawnBudget,
 		spawnableAgents: launchMetadata.spawnableAgents,
 		denyTools: launchMetadata.denyTools,
+	};
+	if (launchMetadata.allowModelOverride !== false) return merged;
+
+	const lockedModelRef = launchMetadata.modelRef ?? launchMetadata.model;
+	const latestModelRef = laterMetadata.modelRef ?? laterMetadata.model;
+	const lockedModel = lockedModelRef
+		? resolveAvailableModelRef(splitModelRef(lockedModelRef).model, undefined, false, modelRegistry, lockedModelRef).model
+		: undefined;
+	// Later entries are child-writable: compare by name so a forged uninstalled provider is ignored, not fatal.
+	const lockedProvider = lockedModel?.includes("/") ? lockedModel.slice(0, lockedModel.indexOf("/")) : undefined;
+	const latestId = latestModelRef ? splitModelRef(latestModelRef).model : undefined;
+	const latestModel = latestId && lockedProvider && !latestId.includes("/") ? `${lockedProvider}/${latestId}` : latestId;
+	const sameModel = !lockedModel || !latestModel || lockedModel === latestModel;
+	const latestThinking = laterMetadata.thinking ?? (latestModelRef ? splitModelRef(latestModelRef).thinking : undefined);
+	const lockedThinking = launchMetadata.thinking ?? (lockedModelRef ? splitModelRef(lockedModelRef).thinking : undefined);
+	const allowedThinking = latestThinking != null && launchMetadata.thinkingOverrides?.some((level) => level === latestThinking);
+	const keepLatestThinking = sameModel && allowedThinking;
+	const thinking = keepLatestThinking ? latestThinking : lockedThinking;
+	const modelRef = lockedModel ? normalizeModelRef(lockedModel, thinking).effectiveModelRef : launchMetadata.modelRef;
+
+	return {
+		...merged,
+		allowModelOverride: false,
+		model: launchMetadata.model,
+		modelRef,
+		thinking,
+		definitionModel: launchMetadata.definitionModel,
+		definitionThinking: launchMetadata.definitionThinking,
+		allowedModels: launchMetadata.allowedModels,
+		thinkingOverrides: launchMetadata.thinkingOverrides,
 	};
 }
 
@@ -209,6 +272,7 @@ export async function resumeSubagentSession(
 	input: ResumeSessionInput,
 	runtime: ResumeServiceRuntime,
 ): Promise<RunningSubagent> {
+	revokePublicationBinding(input.sessionFile);
 	// Verified fan-out candidates are non-resumable (SPEC): their run is
 	// finalized and their worktree workspace is deleted after selection, so a
 	// resume would resurrect a session whose cwd no longer exists. Follow-up
@@ -261,7 +325,7 @@ async function resumeSubagentSessionWithoutWidth(
 	const latestLaunchMetadata = launchMetadataEntries[launchMetadataEntries.length - 1];
 	const invocationMetadataSource =
 		launchMetadata && latestLaunchMetadata && latestLaunchMetadata !== launchMetadata
-			? mergeResumeInvocationMetadata(launchMetadata, latestLaunchMetadata)
+			? mergeResumeInvocationMetadata(launchMetadata, latestLaunchMetadata, runtime.modelRegistry)
 			: launchMetadata;
 	const invocationMetadata = resolveResumeLaunchMetadataForInvocation(
 		invocationMetadataSource,
@@ -428,6 +492,7 @@ async function resumeSubagentSessionWithoutWidth(
 	resumeEnvVars.PI_SUBAGENT_NAME = invocationMetadata?.name ?? name;
 	resumeEnvVars.PI_SUBAGENT_AGENT = resumedAgent ?? "";
 	resumeEnvVars.PI_SUBAGENT_SESSION = sessionFile;
+	resumeEnvVars[LAUNCH_BINDING_ENV] = "";
 
 	const resumedAsync = invocationMetadata?.async ?? metadata.async ?? true;
 	resumeEnvVars.PI_SUBAGENT_AUTO_EXIT = resumedAutoExit ? "1" : "";

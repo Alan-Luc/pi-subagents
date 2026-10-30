@@ -51,8 +51,10 @@ describe("background watcher final context usage", () => {
 	it("uses the exact context snapshot from the exit sidecar", async () => {
 		const sessionFile = makeSession();
 		const child = new EventEmitter() as ChildProcess;
+		const finalizedResultRef = { state: "finalized", entryId: "entry", envelopeSha256: "a".repeat(64), childSessionId: "child", rootGeneration: "root", incarnationId: "invocation" };
 		writeSubagentExitSidecar(sessionFile, {
 			type: "done",
+			finalizedResultRef,
 			contextTokens: 146_000,
 			contextWindow: 210_000,
 		});
@@ -68,6 +70,7 @@ describe("background watcher final context usage", () => {
 		child.emit("exit", 0);
 		const result = await resultPromise;
 
+		assert.deepEqual(result.finalizedResultRef, finalizedResultRef);
 		assert.equal(result.contextTokens, 146_000);
 		assert.equal(result.contextWindow, 210_000);
 	});

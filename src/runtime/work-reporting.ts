@@ -46,9 +46,9 @@ export function registerOutstandingWorkReporting(
 			ready = connect(ctx).then(async (connected) => {
 				if (stopped) { await connected?.stop(); return; }
 				reporter = connected;
-				if (!reporter) { unsubscribe?.(); outstandingWork.reset(); return; }
+				if (!reporter) return;
 				await publish();
-			}).catch(() => { unsubscribe?.(); outstandingWork.reset(); });
+			}).catch(() => { reporter = undefined; });
 			return ready;
 		},
 		async stop(): Promise<void> {

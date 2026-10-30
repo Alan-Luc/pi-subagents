@@ -8,7 +8,7 @@ import {
 } from "../support/index.ts";
 
 describe("resume model launch configuration", () => {
-	it("resolves resume model override unless launch metadata opts out", async () => {
+	it("rejects resume model substitution when launch metadata locks the model", async () => {
 		const base = {
 			version: 1 as const,
 			timestamp: "2026-05-08T00:00:00.000Z",
@@ -28,12 +28,10 @@ describe("resume model launch configuration", () => {
 			boundarySystemPrompt: true,
 		};
 
-		const ignored = resolveResumeLaunchMetadataForInvocationForTest(
-			{ ...base, allowModelOverride: false },
-			"provider/requested:high",
+		assert.throws(
+			() => resolveResumeLaunchMetadataForInvocationForTest({ ...base, allowModelOverride: false }, "provider/requested:high"),
+			/Model override is not allowed/,
 		);
-		assert.equal(ignored?.modelRef, "provider/default:low");
-		assert.equal(ignored?.ignoredModelOverride, "provider/requested:high");
 
 		const overridden = resolveResumeLaunchMetadataForInvocationForTest(base, "provider/requested:high");
 		assert.equal(overridden?.modelRef, "provider/requested:high");
@@ -259,8 +257,8 @@ describe("resume model launch configuration", () => {
 		]);
 	});
 
-	it("records ignored model and thinking overrides separately", () => {
-		const metadata = resolveResumeLaunchMetadataForInvocationForTest(
+	it("rejects both override kinds when a locked launch did not opt into thinking-only overrides", () => {
+		assert.throws(() => resolveResumeLaunchMetadataForInvocationForTest(
 			{
 				version: 1,
 				timestamp: "2026-05-08T00:00:00.000Z",
@@ -282,11 +280,30 @@ describe("resume model launch configuration", () => {
 			"zai-messages/glm-5-turbo",
 			undefined,
 			"off",
-		);
-
-		assert.equal(metadata?.modelRef, "zai-messages/glm-5.1");
-		assert.equal(metadata?.ignoredModelOverride, "zai-messages/glm-5-turbo");
-		assert.equal(metadata?.ignoredThinkingOverride, "off");
+		), /Model override is not allowed/);
+		assert.throws(() => resolveResumeLaunchMetadataForInvocationForTest(
+			{
+				version: 1,
+				timestamp: "2026-05-08T00:00:00.000Z",
+				name: "scout",
+				mode: "background",
+				sessionMode: "lineage-only",
+				parentClosePolicy: "terminate",
+				async: true,
+				model: "zai-messages/glm-5.1",
+				modelRef: "zai-messages/glm-5.1",
+				allowModelOverride: false,
+				denyTools: [],
+				noContextFiles: false,
+				noSession: false,
+				agentConfigDir: "/tmp",
+				cwd: "/tmp",
+				boundarySystemPrompt: true,
+			},
+			undefined,
+			undefined,
+			"off",
+		), /Thinking override 'off' is not allowed/);
 	});
 
 	it("rejects thinking-only resume overrides without a persisted model", () => {

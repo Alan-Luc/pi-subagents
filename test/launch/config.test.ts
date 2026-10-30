@@ -106,7 +106,7 @@ describe("agent launch configuration", () => {
 		assert.equal(defs?.allowModelOverride, true);
 	});
 
-	it("allows launch model override unless agent opts out", () => {
+	it("allows launch model override unless the agent locks it", () => {
 		const params = {
 			name: "code-review",
 			task: "review",
@@ -119,12 +119,12 @@ describe("agent launch configuration", () => {
 			enforceAgentFrontmatterForTest(params, { model: "provider/default" }).model,
 			"provider/requested:high",
 		);
-		assert.equal(
-			enforceAgentFrontmatterForTest(params, {
+		assert.throws(
+			() => enforceAgentFrontmatterForTest(params, {
 				model: "provider/default",
 				allowModelOverride: false,
-			}).model,
-			undefined,
+			}),
+			/model override is not allowed/,
 		);
 	});
 

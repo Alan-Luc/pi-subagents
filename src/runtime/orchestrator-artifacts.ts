@@ -16,11 +16,12 @@ export const ARTIFACT_CAPABILITY_CHANNEL = "artifact-contracts:capability";
 
 export type ArtifactOperation = "read" | "write" | "edit";
 
-type ArtifactPathKind = "plan" | "daily" | "handoff" | "report";
+type ArtifactPathKind = "plan" | "daily" | "topic" | "handoff" | "report";
 
 const ARTIFACT_PATH_PATTERNS: Readonly<Record<ArtifactPathKind, RegExp>> = {
 	plan: /^\.harness\/plans\/\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/,
 	daily: /^\.harness\/\d{4}\/\d{2}\/\d{2}\.md$/,
+	topic: /^\.harness\/\d{4}\/\d{2}\/\d{2}\/[a-z0-9]+(?:-[a-z0-9]+)*\.md$/,
 	handoff:
 		/^\.harness\/handoffs\/\d{4}\/\d{2}\/\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/,
 	report:
@@ -52,11 +53,13 @@ function isArtifactOperation(toolName: string): toolName is ArtifactOperation {
 export function isArtifactCapabilityPath(
 	operation: ArtifactOperation,
 	path: string,
+	features: Readonly<{ topicLogs?: number }> = {},
 ): boolean {
 	const kind = artifactPathKind(path);
 	if (!kind) return false;
 	if (kind === "plan") return true;
 	if (kind === "daily") return operation === "read";
+	if (kind === "topic") return operation === "read" && features.topicLogs === 1;
 	if (kind === "handoff") return operation === "read" || operation === "write";
 	return operation === "read" || operation === "write" || operation === "edit";
 }
@@ -143,6 +146,7 @@ function checkArtifactToolCall(
 	ctx: Pick<ExtensionContext, "cwd">,
 	normalActiveTools: readonly string[],
 	mutationsAvailable: boolean,
+	topicLogsAvailable: boolean,
 ): ToolCallEventResult | undefined {
 	if (!isArtifactOperation(event.toolName)) return undefined;
 	if (!normalActiveTools.includes(event.toolName)) {
@@ -167,7 +171,7 @@ function checkArtifactToolCall(
 			`Orchestrator ${JSON.stringify(event.toolName)} requires a record input with a string path.`,
 		);
 	}
-	if (!isArtifactCapabilityPath(event.toolName, requestedPath)) {
+	if (!isArtifactCapabilityPath(event.toolName, requestedPath, topicLogsAvailable ? { topicLogs: 1 } : {})) {
 		return blocked(
 			`Blocked ${JSON.stringify(event.toolName)} path ${JSON.stringify(requestedPath)}: only the canonical artifact version-1 paths are allowed.`,
 		);
@@ -219,11 +223,11 @@ export function createOrchestratorArtifactGate(
 	events: ExtensionAPI["events"] | undefined,
 ): OrchestratorArtifactGate {
 	let mutationsAvailable = false;
+	let topicLogsAvailable = false;
 	events ??= NO_ARTIFACT_CAPABILITY_EVENTS;
 	events.on(ARTIFACT_CAPABILITY_CHANNEL, (payload) => {
-		const next = isCompatibleCapability(payload);
-		if (next === mutationsAvailable) return;
-		mutationsAvailable = next;
+		mutationsAvailable = isCompatibleCapability(payload);
+		topicLogsAvailable = mutationsAvailable && isRecord(payload) && payload.topicLogs === 1;
 	});
 	events.emit(ARTIFACT_CAPABILITY_REQUEST_CHANNEL, {});
 	return {
@@ -244,6 +248,6 @@ export function createOrchestratorArtifactGate(
 				getOrchestratorArtifactTools(normalActiveTools, mutationsAvailable),
 			),
 		handleToolCall: (event, ctx, normalActiveTools) =>
-			checkArtifactToolCall(event, ctx, normalActiveTools, mutationsAvailable),
+			checkArtifactToolCall(event, ctx, normalActiveTools, mutationsAvailable, topicLogsAvailable),
 	};
 }

@@ -313,7 +313,7 @@ function watchBackgroundGeneration(
 			if (running.timeoutExpiry || (running.timeoutWrapUp && !running.timeoutWrapUpMode)) return;
 			if (!sessionReadable) return;
 			try {
-				if (!shouldReapStableTerminalSummary(running)) return;
+				if (running.launchBinding || !shouldReapStableTerminalSummary(running)) return;
 				const summary = getTerminalAssistantSummary(
 					(getEntries(running.sessionFile) as SessionEntryLike[]).slice(running.launchEntryCount ?? 0),
 				);
@@ -406,6 +406,7 @@ function watchBackgroundGeneration(
 				exitCode,
 				elapsed,
 				outputTokens: exitSignal?.outputTokens,
+				finalizedResultRef: exitSignal?.finalizedResultRef,
 				...finalContextUsage,
 				...(timedOut
 					? {

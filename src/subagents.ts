@@ -1,4 +1,5 @@
 import { registerOutstandingWorkReporting } from "./runtime/work-reporting.ts";
+import { registerDelegationStatus } from "./runtime/delegation-status.ts";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import type { AgentListEntry } from "./agents/agent-list.ts";
@@ -149,6 +150,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 	if (getEffectiveAgentDefinitions().length === 0) return;
 
 	publishRunningSubagentCount(() => runningSubagents.size);
+	registerDelegationStatus(pi);
 	const workReporting = registerOutstandingWorkReporting(pi);
 
 	function attachWidgetContext(ctx: ExtensionContext) {
@@ -441,6 +443,10 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 		muxUnavailableResult: () => muxUnavailableResult("tab-title"),
 	});
 
+	const modelRegistry = {
+		getAvailable: () => latestContext?.modelRegistry.getAvailable() ?? [],
+	};
+
 	registerSubagentResumeTool(pi, shouldRegister, {
 		getShellReadyDelayMs,
 		isMuxAvailable,
@@ -452,9 +458,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 		getLaunchedSubagentResult,
 		runningSubagents,
 		getContextWindow: (modelRef) => widgetManager.resolveModelContextWindow(modelRef),
-		modelRegistry: {
-			getAvailable: () => latestContext?.modelRegistry.getAvailable() ?? [],
-		},
+		modelRegistry,
 	});
 
 	registerSubagentMessageRenderers(pi, formatElapsed);
@@ -473,6 +477,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 			pi,
 			wireSubagentSteerBack,
 			orchestrator,
+			modelRegistry,
 		},
 	);
 }

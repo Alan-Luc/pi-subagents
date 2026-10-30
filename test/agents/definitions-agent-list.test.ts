@@ -2,6 +2,7 @@ import {
 	afterEach,
 	assert,
 	createTestDir,
+	createTestEventBus,
 	describe,
 	getAgentListEntriesForTest,
 	getAgentListSignatureForTest,
@@ -393,7 +394,7 @@ describe("agent definitions and catalog", () => {
 
 		const reminder = renderAgentListReminderForTest(getAgentListEntriesForTest(dir));
 		assert.doesNotMatch(reminder, /\n {2}models:/);
-		assert.match(reminder, /no `models:` line ignores model and thinking overrides/);
+		assert.match(reminder, /no `models:` line does not permit model overrides/);
 	});
 
 	it("renders the completion contract to match each child's actual exit path", () => {
@@ -499,6 +500,7 @@ describe("agent definitions and catalog", () => {
 
 		subagentsExtension({
 			on() {},
+			events: createTestEventBus(),
 			registerCommand() {},
 			registerMessageRenderer() {},
 			sendMessage() {},
@@ -545,6 +547,7 @@ describe("agent definitions and catalog", () => {
 
 		subagentsExtension({
 			on() {},
+			events: createTestEventBus(),
 			registerCommand() {},
 			registerMessageRenderer() {},
 			sendMessage() {},
@@ -571,6 +574,7 @@ describe("agent definitions and catalog", () => {
 		try {
 			subagentsExtension({
 				on() {},
+				events: createTestEventBus(),
 				registerCommand() {},
 				registerMessageRenderer() {},
 				sendMessage() {},

@@ -1,5 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { LAUNCH_BINDING_ENV, mintPublicationLaunchBinding } from "../runtime/finalized-result.ts";
 import { getSubagentDisplayTitle, isSetTabTitleToolEnabled } from "../agents/titles.ts";
 import { createZellijCommandSurface } from "../mux/zellij-placement.ts";
 import { getZellijShellCommand, resolveZellijTarget } from "../mux/zellij-runtime.ts";
@@ -153,7 +154,7 @@ export async function launchInteractiveSubagent(
 				herdr: herdrContext,
 				zellij: zellijContext,
 			})));
-	const envVars = {
+	const envVars: Record<string, string> = {
 		...launch.envVars,
 		...(zellijTarget ? { ZELLIJ_SESSION_NAME: zellijTarget.sessionName } : {}),
 		...(ordinarySurface ? { PI_SUBAGENT_SURFACE: ordinarySurface } : {}),
@@ -176,6 +177,8 @@ export async function launchInteractiveSubagent(
 	piArgs.push(...promptArgs);
 
 	const { launchEntryCount } = launch;
+	const launchBinding = mintPublicationLaunchBinding(ctx, id, prepared.subagentSessionFile, launchEntryCount, noSession);
+	envVars[LAUNCH_BINDING_ENV] = launchBinding ? JSON.stringify(launchBinding) : "";
 	clearSubagentExitSidecar(prepared.subagentSessionFile);
 	const { command, capsulePath, dispose } = buildInteractiveShellCommand({
 		cwd: launch.forcedCwd ?? prepared.runtimePaths.effectiveCwd ?? undefined,
@@ -236,6 +239,7 @@ export async function launchInteractiveSubagent(
 		startTime,
 		sessionFile: prepared.subagentSessionFile,
 		launchEntryCount,
+		launchBinding,
 		modelContextWindow: runtime.getContextWindow(prepared.effectiveModelRef),
 		modelRef: prepared.effectiveModelRef,
 		launchMetadata: launch.launchMetadata,

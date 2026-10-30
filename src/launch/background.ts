@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { LAUNCH_BINDING_ENV, mintPublicationLaunchBinding } from "../runtime/finalized-result.ts";
 import { getSubagentDisplayTitle } from "../agents/titles.ts";
 import { clearSubagentExitSidecar } from "../session/exit-sidecar.ts";
 import { buildPiPromptArgs } from "../session/session-files.ts";
@@ -140,6 +141,8 @@ export async function launchBackgroundSubagent(
 
 	const startTime = Date.now();
 	const { envVars, launchEntryCount } = launch;
+	const launchBinding = mintPublicationLaunchBinding(ctx, id, prepared.subagentSessionFile, launchEntryCount, noSession);
+	envVars[LAUNCH_BINDING_ENV] = launchBinding ? JSON.stringify(launchBinding) : "";
 	// The child receives the parent's clock so its launch contract and any
 	// report-only continuation match the deadline the watcher enforces.
 	if (prepared.agentDefs?.timeout || prepared.agentDefs?.idleTimeout) {
@@ -176,6 +179,7 @@ export async function launchBackgroundSubagent(
 		startTime,
 		sessionFile: prepared.subagentSessionFile,
 		launchEntryCount,
+		launchBinding,
 		modelContextWindow: runtime.getContextWindow(prepared.effectiveModelRef),
 		modelRef: prepared.effectiveModelRef,
 		launchMetadata: launch.launchMetadata,

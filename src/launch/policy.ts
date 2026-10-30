@@ -36,11 +36,20 @@ export function getSubagentAgentRequirementError(
 	return null;
 }
 
-export function getSubagentAgentOverrideError(_params: Partial<SubagentParamsInput>, _agentDefs: AgentDefaults | null) {
-	// Named-agent frontmatter is authoritative by default. Call-time model and
-	// thinking overrides are allowed unless the definition opts out with
-	// allow-model-override: false; other call-time runtime fields are ignored
-	// instead of rejected.
+export function getSubagentAgentOverrideError(params: Partial<SubagentParamsInput>, agentDefs: AgentDefaults | null) {
+	if (agentDefs?.allowModelOverride !== false) return null;
+	if (params.model != null) {
+		return {
+			content: [{ type: "text" as const, text: "Error: model override is not allowed for this agent." }],
+			details: { error: "model_override_not_allowed" },
+		};
+	}
+	if (params.thinking != null && !agentDefs.thinkingOverrides?.some((level) => level === params.thinking)) {
+		return {
+			content: [{ type: "text" as const, text: "Error: thinking override is not allowed for this agent." }],
+			details: { error: "thinking_override_not_allowed" },
+		};
+	}
 	return null;
 }
 
@@ -174,13 +183,15 @@ export function enforceAgentFrontmatter(
 	// forcedCwd/launchEnv are internal runtime-only overrides: the model-facing
 	// tool path strips them from caller input (getRequestedChildren), so
 	// preserving them here only carries trusted internal launches through.
+	const overrideError = getSubagentAgentOverrideError(params, agentDefs);
+	if (overrideError) throw new Error(overrideError.content[0]?.text ?? "Invalid model or thinking override.");
 	return {
 		name: params.name,
 		task: params.task,
 		title: params.title,
 		agent: params.agent,
-		...(agentDefs?.allowModelOverride !== false && params.model ? { model: params.model } : {}),
-		...(agentDefs?.allowModelOverride !== false && params.thinking ? { thinking: params.thinking } : {}),
+		...(params.model ? { model: params.model } : {}),
+		...(params.thinking ? { thinking: params.thinking } : {}),
 		async: resolveSubagentAsync(params, agentDefs),
 		blocking: resolveSubagentBlocking(params, agentDefs),
 		...(params.forcedCwd ? { forcedCwd: params.forcedCwd } : {}),

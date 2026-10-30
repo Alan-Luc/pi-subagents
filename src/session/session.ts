@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { CALLER_PING_TOOL_NAME, SUBAGENT_DONE_TOOL_NAME } from "../tools/tool-names.ts";
 import type { SubagentSummarySource } from "../types.ts";
 
+const RESULT_SUBMISSION_TOOL_NAME = "submit_agent_result";
+
 export interface SessionEntry {
 	type: string;
 	id: string;
@@ -171,12 +173,30 @@ export function findLatestAssistantContextTokens(entries: SessionEntry[]): numbe
 	return findLatestAssistantContextSnapshot(entries)?.contextTokens;
 }
 
-function findLastAssistantOutput(entries: SessionEntry[]): SubagentOutput | null {
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasSubmissionTool(entries: SessionEntry[]): boolean {
+	let active = false;
+	for (const entry of entries) {
+		const message = entry.type === "message" ? entry.message : undefined;
+		if (!isRecord(message) || message.role !== "system") continue;
+		if (Array.isArray(message.toolsRemoved) && message.toolsRemoved.some((tool) => tool === RESULT_SUBMISSION_TOOL_NAME || (isRecord(tool) && tool.name === RESULT_SUBMISSION_TOOL_NAME))) active = false;
+		if (Array.isArray(message.toolsAdded) && message.toolsAdded.some((tool) => isRecord(tool) && tool.name === RESULT_SUBMISSION_TOOL_NAME)) active = true;
+	}
+	return active;
+}
+
+function findLastAssistantOutput(entries: SessionEntry[], structured = hasSubmissionTool(entries)): SubagentOutput | null {
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
 		if (entry.type !== "message") continue;
 		const msg = entry as MessageEntry;
+		if (msg.message.role === "user") return null;
 		if (msg.message.role !== "assistant") continue;
+		if (msg.message.content.some((block) => block.type === "toolCall" && block.name === RESULT_SUBMISSION_TOOL_NAME)
+			|| (structured && isToolUseStopReason(getStopReason(msg)))) return null;
 		const text = getTextContent(msg);
 		if (text) return { summary: text, summarySource: "subagent" };
 		// A tool-use assistant message is a boundary, not a final answer. Stop
@@ -198,14 +218,18 @@ export function findLastAssistantMessage(entries: SessionEntry[]): string | null
 }
 
 export function findLastSubagentOutputWithSource(entries: SessionEntry[]): SubagentOutput | null {
-	const assistantOutput = findLastAssistantOutput(entries);
+	const structured = hasSubmissionTool(entries);
+	const assistantOutput = findLastAssistantOutput(entries, structured);
 	if (assistantOutput) return assistantOutput;
+	if (structured) return null;
 
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
 		if (entry.type !== "message") continue;
 		const msg = entry as MessageEntry;
+		if (msg.message.role === "user") return null;
 		if (msg.message.role !== "toolResult") continue;
+		if (msg.message.toolName === RESULT_SUBMISSION_TOOL_NAME) return null;
 		if (msg.message.toolName === SUBAGENT_DONE_TOOL_NAME) continue;
 		if (msg.message.toolName === CALLER_PING_TOOL_NAME) continue;
 		const text = getTextContent(msg);
