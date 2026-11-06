@@ -1,4 +1,5 @@
 import { outstandingWork } from "./outstanding-work.ts";
+import { formatPublicationLane } from "./finalized-result.ts";
 import type { CompletedSubagentResult, RunningSubagent, SubagentPingMessageDetails, SubagentResult } from "../types.ts";
 import { formatContextExitNotice, formatFinalContextUsage, formatSessionRef } from "./final-context-usage.ts";
 import { releaseSpawnWidthSlot } from "./spawn-width.ts";
@@ -80,7 +81,7 @@ export function deliverCompletedSubagentResult(
 	outstandingWork.delivery(completed.id, () => pi.sendMessage(
 		{
 			customType: "subagent_result",
-			content: getCompletedSubagentContent(completed, formatElapsed, `${sessionRef}${contextRef}`),
+			content: getCompletedSubagentContent(completed, formatElapsed, `${sessionRef}${contextRef}${formatPublicationLane(completed)}`),
 			display: true,
 			details: getCompletedResultDetails(completed),
 		},

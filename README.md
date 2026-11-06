@@ -662,6 +662,11 @@ One exception: attempt sessions of an `llm-as-a-verifier` launch are never resum
 
 The child's final assistant message is its output.
 
+A completed report with a captured finalized result includes `Publication lane: childId=... incarnationId=...`.
+Use those package-minted invocation IDs when selecting lanes for `publication_clearance`.
+The IDs select authoritative registry records; they do not grant publication or replace proof validation.
+Unfinalized, failed, and unbound results omit that line.
+
 For large output, let the child use Pi's `write` tool and mention the path in its final message.
 
 ## Child tools and extensions

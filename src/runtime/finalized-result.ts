@@ -6,6 +6,13 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 
+import type { CompletedSubagentResult } from "../types.ts";
+
+export function formatPublicationLane(result: Pick<CompletedSubagentResult, "id" | "status" | "launchBinding" | "finalizedResultRef">): string {
+	if (result.status !== "completed" || !result.launchBinding || !result.finalizedResultRef) return "";
+	return `\n\nPublication lane: childId=${result.id} incarnationId=${result.launchBinding.incarnationId}`;
+}
+
 export const FINALIZE_RESULT_REQUEST =
 	"artifact-contracts:finalize-result:request:v1";
 export const FINALIZE_RESULT_RESPONSE =

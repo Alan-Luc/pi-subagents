@@ -43,6 +43,20 @@ function makeResult(overrides: Partial<SubagentResult> = {}): SubagentResult {
 describe("result router", () => {
 	afterEach(() => resetSubagentStateForTest());
 
+	it("exposes authoritative invocation IDs only for finalized completed reports", () => {
+		const sent: Array<{ content: string }> = [];
+		const binding = { parentSessionId: "parent", parentLeafIdAtLaunch: "leaf", launchToolCallId: "launch", childId: "child-result-router", incarnationId: "invocation-fixture", canonicalSessionFile: "/tmp/result-child.jsonl", entryFloor: 0 };
+		for (const state of ["unfinalized", "unbound", "failed", "completed"] as const) {
+			const completed = buildCompletedSubagentResult(makeRunning({ launchBinding: binding }), makeResult());
+			if (state !== "unfinalized") completed.finalizedResultRef = { state: "finalized", entryId: "final", envelopeSha256: "a".repeat(64), childSessionId: "child-session", rootGeneration: "generation", incarnationId: binding.incarnationId };
+			if (state === "unbound") delete completed.launchBinding;
+			if (state === "failed") completed.status = "failed";
+			deliverCompletedSubagentResult({ sendMessage: (message: unknown) => { sent.push(message as { content: string }); } }, completed, (seconds) => `${seconds}s`);
+			if (state === "completed") assert.match(sent.at(-1)!.content, /Publication lane: childId=child-result-router incarnationId=invocation-fixture/);
+			else assert.doesNotMatch(sent.at(-1)!.content, /Publication lane:/);
+		}
+	});
+
 	it("tells the parent an early stop was instructed and not to resume it", () => {
 		const sent: Array<{ message: any; options: any }> = [];
 		const running = makeRunning();

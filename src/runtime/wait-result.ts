@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { formatPublicationLane } from "./finalized-result.ts";
 import type { CompletedSubagentResult, DeliveryState, RunningSubagent, SubagentResult, WaitParams } from "../types.ts";
 import { formatContextExitNotice, formatFinalContextUsage, formatSessionRef } from "./final-context-usage.ts";
 import { hasRealSubagentOutput } from "./state.ts";
@@ -71,7 +72,7 @@ function getSubagentWaitSuccessResult(cached: CompletedSubagentResult) {
 				: `Sub-agent "${cached.name}" ${verb} (exit ${cached.exitCode}).\n\n${cached.summary}${sessionRef}${contextRef}`;
 	}
 	return {
-		content: [{ type: "text", text }],
+		content: [{ type: "text", text: text + formatPublicationLane(cached) }],
 		details: {
 			id: cached.id,
 			name: cached.name,

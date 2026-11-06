@@ -183,6 +183,21 @@ describe("subagent wait behavior", () => {
 		assert.equal((waited.details as any).exitCode, 0);
 	});
 
+	it("includes finalized invocation IDs in awaited completion reports", async () => {
+		const running = {
+			id: "child-finalized-wait", name: "Finalized child", task: "Review candidate",
+			mode: "background" as const, executionState: "running" as const,
+			deliveryState: "detached" as const, parentClosePolicy: "terminate" as const,
+			startTime: Date.now(), sessionFile: "/tmp/finalized-wait.jsonl",
+			launchBinding: { parentSessionId: "parent", parentLeafIdAtLaunch: "leaf", launchToolCallId: "launch", childId: "child-finalized-wait", incarnationId: "wait-invocation", canonicalSessionFile: "/tmp/finalized-wait.jsonl", entryFloor: 0 },
+		};
+		routeDetachedSubagentCompletionForTest({ sendMessage: () => {} }, running, { name: running.name, task: running.task, summary: "Finished", sessionFile: running.sessionFile, exitCode: 0, elapsed: 1 });
+		const cached = getCompletedSubagentResultForTest(running.id)!;
+		cached.finalizedResultRef = { state: "finalized", entryId: "final", envelopeSha256: "a".repeat(64), childSessionId: "child", rootGeneration: "generation", incarnationId: "wait-invocation" };
+		const waited = await waitForSubagentForTest({ id: running.id });
+		assert.match((waited.content[0] as { text: string }).text, /Publication lane: childId=child-finalized-wait incarnationId=wait-invocation/);
+	});
+
 	it("returns pending on wait timeout and restores detached delivery", async () => {
 		const sent: Array<{ message: any; options: any }> = [];
 		let resolveCompletion!: (result: any) => void;
