@@ -7,6 +7,8 @@ import { describe, it } from "node:test";
 import {
 	getPackageDir,
 	SessionManager,
+	type BuildSystemPromptOptions,
+	type NormalizedBuildSystemPromptOptions,
 	type ExtensionAPI,
 	type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
@@ -22,16 +24,14 @@ import {
 } from "../../src/tools/tool-names.ts";
 
 const ORCHESTRATOR_BASE_PROMPT = getOrchestratorPrompt();
-const { buildSystemPrompt } = (await import(
+const { buildSystemPrompt, normalizeBuildSystemPromptOptions }: {
+	buildSystemPrompt(options: BuildSystemPromptOptions): string;
+	normalizeBuildSystemPromptOptions(
+		options: BuildSystemPromptOptions,
+	): NormalizedBuildSystemPromptOptions;
+} = await import(
 	pathToFileURL(join(getPackageDir(), "dist/core/system-prompt.js")).href,
-)) as {
-	buildSystemPrompt(options: {
-		customPrompt?: string;
-		appendSystemPrompt?: string;
-		cwd: string;
-		contextFiles?: Array<{ path: string; content: string }>;
-	}): string;
-};
+);
 const TASK_TOOLS = ["TaskCreate", "TaskList", "TaskGet", "TaskUpdate"];
 const FORBIDDEN_TASK_TOOLS = ["TaskExecute", "TaskOutput", "TaskStop"];
 const BACKGROUND_TOOLS = ["bg_run", "bg_status", "bg_logs", "bg_kill"];
@@ -244,13 +244,13 @@ describe("orchestrator prompt", () => {
 		]);
 		assert.deepEqual(notices, []);
 		const event = {
-			systemPromptOptions: {
+			systemPromptOptions: normalizeBuildSystemPromptOptions({
 				customPrompt: "Pi base sentinel",
 				cwd: "/tmp",
 				contextFiles: [{ path: "AGENTS.md", content: "AGENTS sentinel" }],
 				appendSystemPrompt:
 					"prior append sentinel\nTech Lead sentinel\nartifact brief sentinel",
-			},
+			}),
 		};
 		assert.equal(controller.beforeAgentStart(event), undefined);
 		const renderedPrompt = buildSystemPrompt(event.systemPromptOptions);
@@ -320,14 +320,11 @@ describe("orchestrator prompt", () => {
 			hasPendingMessages: () => false,
 			ui: { notify() {} },
 		});
-		const event: {
-			systemPromptOptions: {
-				customPrompt: string;
-				cwd: string;
-				appendSystemPrompt?: string;
-			};
-		} = {
-			systemPromptOptions: { customPrompt: "Pi base sentinel", cwd: "/tmp" },
+		const event = {
+			systemPromptOptions: normalizeBuildSystemPromptOptions({
+				customPrompt: "Pi base sentinel",
+				cwd: "/tmp",
+			}),
 		};
 		assert.equal(controller.beforeAgentStart(event), undefined);
 		assert.equal(event.systemPromptOptions.appendSystemPrompt, ORCHESTRATOR_COMMON_PROMPT);

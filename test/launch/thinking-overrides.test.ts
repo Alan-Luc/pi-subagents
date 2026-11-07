@@ -126,10 +126,10 @@ describe("thinking-only task effort overrides", () => {
 	it("checks an opted-in level against the selected model's installed support metadata", async () => {
 		const dir = createTestDir();
 		const launchParams = { ...params, thinking: "off" };
-		const agentDefs = {
+		const agentDefs: NonNullable<Parameters<typeof buildChildLaunchPlan>[0]["agentDefs"]> = {
 			model: "anthropic/claude-sonnet-5",
 			allowModelOverride: false,
-			thinkingOverrides: ["off", "low", "medium", "high"] as const,
+			thinkingOverrides: ["off", "low", "medium", "high"],
 		};
 		const base = { params: launchParams, agentDefs, parentCwd: dir, parentSessionDir: dir };
 		const supported = await buildChildLaunchPlan({

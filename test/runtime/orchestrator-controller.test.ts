@@ -5,7 +5,13 @@ import {
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import {
+	getPackageDir,
+	SessionManager,
+	type BuildSystemPromptOptions,
+	type NormalizedBuildSystemPromptOptions,
+} from "@earendil-works/pi-coding-agent";
+import { pathToFileURL } from "node:url";
 import { ARTIFACT_CAPABILITY_CHANNEL } from "../../src/runtime/orchestrator-artifacts.ts";
 import {
 	loadOrchestratorGlobalConfig,
@@ -29,6 +35,14 @@ import {
 	it,
 	join,
 } from "../support/index.ts";
+
+const { normalizeBuildSystemPromptOptions }: {
+	normalizeBuildSystemPromptOptions(
+		options: BuildSystemPromptOptions,
+	): NormalizedBuildSystemPromptOptions;
+} = await import(
+	pathToFileURL(join(getPackageDir(), "dist/core/system-prompt.js")).href,
+);
 
 function createEvents() {
 	const listeners = new Map<string, Set<(payload: unknown) => void>>();
@@ -329,7 +343,10 @@ describe("orchestrator runtime persistence", () => {
 		controller.handleSessionStart(runtime.ctx);
 
 		const event = {
-			systemPromptOptions: { cwd: "/tmp", appendSystemPrompt: "keep this" },
+			systemPromptOptions: normalizeBuildSystemPromptOptions({
+				cwd: "/tmp",
+				appendSystemPrompt: "keep this",
+			}),
 		};
 		const result = controller.beforeAgentStart(event);
 		assert.equal(result, undefined);
@@ -393,7 +410,9 @@ describe("orchestrator runtime persistence", () => {
 			version: 1,
 			mutations: true,
 		});
-		controller.beforeAgentStart({ systemPromptOptions: { cwd: runtime.cwd } });
+		controller.beforeAgentStart({
+			systemPromptOptions: normalizeBuildSystemPromptOptions({ cwd: runtime.cwd }),
+		});
 		assert.deepEqual(runtime.getActiveTools(), [
 			"read",
 			"write",
@@ -408,7 +427,9 @@ describe("orchestrator runtime persistence", () => {
 			version: 2,
 			mutations: true,
 		});
-		controller.beforeAgentStart({ systemPromptOptions: { cwd: runtime.cwd } });
+		controller.beforeAgentStart({
+			systemPromptOptions: normalizeBuildSystemPromptOptions({ cwd: runtime.cwd }),
+		});
 		assert.deepEqual(runtime.getActiveTools(), ["read", "subagent"]);
 		assert.equal(
 			controller.handleToolCall(writeEvent, { cwd: runtime.cwd })?.block,
@@ -442,7 +463,9 @@ describe("orchestrator runtime persistence", () => {
 			version: 1,
 			mutations: true,
 		});
-		controller.beforeAgentStart({ systemPromptOptions: { cwd: runtime.cwd } });
+		controller.beforeAgentStart({
+			systemPromptOptions: normalizeBuildSystemPromptOptions({ cwd: runtime.cwd }),
+		});
 		assert.deepEqual(runtime.getActiveTools(), [
 			"read",
 			"write",
